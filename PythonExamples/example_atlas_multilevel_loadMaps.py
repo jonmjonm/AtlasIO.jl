@@ -1,4 +1,4 @@
-## This script reads in one of the multiscale map assignments
+## This script reads in one of the multi scale map assignments
 ## CURRENTLY CODE DOES NOTHING WITH THE MAPS
 
 import json
