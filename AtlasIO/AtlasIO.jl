@@ -124,9 +124,9 @@ function Base.close(atlas::Atlas)
 end
 
 """
-opens an IO stream which is wraped in a compression pipe 
-if the fileneame extension suggests it. Currently suports .gz and .bz2.
-Defaults to regular concompressed writing/reading if not one of these extensions.
+opens an IO stream which is wrapped in a compression pipe 
+if the fileneame extension suggests it. Currently supports .gz and .bz2.
+Defaults to regular uncompressed writing/reading if not one of these extensions.
 Returns *nothing* if unsure what to do.
 """
 function smartOpen(fileName::String, io_mode::String)::Union{IO,Nothing}
