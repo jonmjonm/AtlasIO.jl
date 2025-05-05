@@ -1,7 +1,36 @@
 import math
 
+'''
+This file contains a number of helper functions.
+    - get_node_to_district(districting, nodes):This function reconstructs for a multiscale districting description
+ the mapping from precinct IDs to Districts for a given map
+
+    - sumElection(electionName, node_to_dist,  data): This function sums a particular election, given in electionName, of a set of election data and 
+    a node_to_dist map.
+
+    - stateWideVotes(electionName,dataElection): this returns the democratic, republican and total votes 
+    summered across the entire state using the votes in stateWideVotes.
+
+    - addUniformSwings(targetDemFractions,electionNames,dataElection): given a particular set of election data (given in dataElection)
+    this swings the election, given in electionNames, so the democratic vote fraction is equal to targetDemFractions
+
+    - listElections(dataElection): this returns a list of the names of the elections contained in
+     dataElection
+
+    - addTotalVotes(dataElection): sometimes the data is missing the vote totals (given by the suffix "_T"), having only the 
+    democratic (given by the suffix "_D") and the republican (given by the suffix "_R"). This 
+    function added the total vote entry if it is missing and does nothing if it is exist.
+
+    - demWinByPrecicts(elections,node_to_dist,dataElection): this returns the predicts in which the democrats won
+    using the votes in  elections and the node_to_dist map.
+
+    There are also a number of functions to calculate statistics of
+    histograms such as: histMode,histNormalize,histSpread,histMedean, histStd, histMean .
+
+'''
+
 def get_node_to_district(districting, nodes):
-    # This function reconstucts for a multiscale districting description
+    # This function reconstructs for a multiscale districting description
     # the mapping from precinct IDs to Districts for a given map 
     node_id_to_district = {}
     for node in nodes:
@@ -20,7 +49,8 @@ def get_node_to_district(districting, nodes):
 
 
 def sumElection(electionName, node_to_dist,  data):
-    # This fuction 
+    # This function sums a particular election, given in electionName, of a set of election data and 
+    # a node_to_dist map.
     distVoteR = {}
     distVoteD = {}
     distVoteT = {}

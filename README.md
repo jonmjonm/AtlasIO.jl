@@ -44,9 +44,9 @@ The directory structure of the AtlasIO repository is as follows:
         This is a large collection of map assignments for testing. Notice that it is compressed. The library can read compressed or uncompressed files. These multi-scale assignments come from code which try to preserve the different levels. This ensembles was used in NC 2021 court case. More info can be found in the [original repos](https://git.math.duke.edu/gitlab/gjh/ncanalysis2020/-/tree/main/ensembles/congressional)   
 * PythonReader Directory : This directory contains python code to read Atlas files and analyze them.
     - Atlas.py :
-        This is the main Atlas reader Library. It is a python version of the Julia library. It can read compressed or uncompressed files.
+        This is the main Atlas reader Library. It is a python version of the Julia library. It can read compressed or uncompressed files. It can not write an Atlas file presently. Use the Julia library to write an Atlas file.
     - helper_functions.py :
-        Some helper functions that are useful.
+        Some helper functions that are useful. Examples include summing elections, performing uniform swings and obtaining the node name to district mapping. See the file for full list and description.
 
 * Shapefiles_JSON Directory : 
     This contains some election data and the adjacency data. Some files are in JSON files others are in ziped shapefiles.
