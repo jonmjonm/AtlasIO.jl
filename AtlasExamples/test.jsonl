@@ -1,0 +1,17 @@
+"This is an Atlas for Redistricting Maps"
+{"description":"this is discription","date":"2021-08-04T08:58:22.216","atlasParamType":"Dict{String, Int64}","mapParamType":"Dict{String, Int64}"}
+{"county":2,"gamama":4}
+{"name":"map1","weight":1,"data":{"param":2,"trees":4},"districting":[{"[\"p2\", \"c2\"]":1},{"[\"p1\", \"c2\"]":1},{"[\"p3\", \"c7\", \"b100\"]":2}]}
+{"name":"map2","weight":1,"data":{"param":2,"trees":4},"districting":[{"[\"p2\", \"c2\"]":1},{"[\"p1\", \"c2\"]":1},{"[\"p3\", \"c7\", \"b100\"]":2}]}
+{"name":"map3","weight":1,"data":{"param":2,"trees":4},"districting":[{"[\"p2\", \"c2\"]":1},{"[\"p1\", \"c2\"]":1},{"[\"p3\", \"c7\", \"b100\"]":2}]}
+{"name":"map-10","weight":10,"data":{"param":2,"trees":4},"districting":[{"[\"p2\", \"c2\"]":1},{"[\"p1\", \"c2\"]":1},{"[\"p3\", \"c7\", \"b100\"]":2}]}
+{"name":"map-11","weight":10,"data":{"param":2,"trees":4},"districting":[{"[\"p2\", \"c2\"]":1},{"[\"p1\", \"c2\"]":1},{"[\"p3\", \"c7\", \"b100\"]":2}]}
+{"name":"map-12","weight":10,"data":{"param":2,"trees":4},"districting":[{"[\"p2\", \"c2\"]":1},{"[\"p1\", \"c2\"]":1},{"[\"p3\", \"c7\", \"b100\"]":2}]}
+{"name":"map-13","weight":10,"data":{"param":2,"trees":4},"districting":[{"[\"p2\", \"c2\"]":1},{"[\"p1\", \"c2\"]":1},{"[\"p3\", \"c7\", \"b100\"]":2}]}
+{"name":"map-14","weight":10,"data":{"param":2,"trees":4},"districting":[{"[\"p2\", \"c2\"]":1},{"[\"p1\", \"c2\"]":1},{"[\"p3\", \"c7\", \"b100\"]":2}]}
+{"name":"map-15","weight":10,"data":{"param":2,"trees":4},"districting":[{"[\"p2\", \"c2\"]":1},{"[\"p1\", \"c2\"]":1},{"[\"p3\", \"c7\", \"b100\"]":2}]}
+{"name":"map-16","weight":10,"data":{"param":2,"trees":4},"districting":[{"[\"p2\", \"c2\"]":1},{"[\"p1\", \"c2\"]":1},{"[\"p3\", \"c7\", \"b100\"]":2}]}
+{"name":"map-17","weight":10,"data":{"param":2,"trees":4},"districting":[{"[\"p2\", \"c2\"]":1},{"[\"p1\", \"c2\"]":1},{"[\"p3\", \"c7\", \"b100\"]":2}]}
+{"name":"map-18","weight":10,"data":{"param":2,"trees":4},"districting":[{"[\"p2\", \"c2\"]":1},{"[\"p1\", \"c2\"]":1},{"[\"p3\", \"c7\", \"b100\"]":2}]}
+{"name":"map-19","weight":10,"data":{"param":2,"trees":4},"districting":[{"[\"p2\", \"c2\"]":1},{"[\"p1\", \"c2\"]":1},{"[\"p3\", \"c7\", \"b100\"]":2}]}
+{"name":"map-20","weight":10,"data":{"param":2,"trees":4},"districting":[{"[\"p2\", \"c2\"]":1},{"[\"p1\", \"c2\"]":1},{"[\"p3\", \"c7\", \"b100\"]":2}]}
