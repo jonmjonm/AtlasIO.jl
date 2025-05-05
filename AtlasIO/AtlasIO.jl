@@ -61,7 +61,7 @@ StructTypes.StructType(::Type{<:Map}) = StructTypes.CustomStruct()
 StructTypes.lower(x::Map{T} where T) = (name=x.name, weight=x.weight, data=x.data, districting=[[ x for x in k] => v for (k, v) in x.districting])
 
 function newAtlas(io::IO, atlasHeader::AtlasHeader, atlasParam)
-    JSON3.write(io,"This is an Atlas for Redistricting Maps. See https://git.math.duke.edu/gitlab/jonm/atlasio for more information.")
+    JSON3.write(io,"This is an Atlas for Redistricting Maps. See 'https://git.math.duke.edu/gitlab/jonm/atlasio' for more information.")
     write(io,"\n")
     JSON3.write(io,atlasHeader)
     write(io,"\n")
