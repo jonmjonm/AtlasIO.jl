@@ -28,7 +28,7 @@ The directory structure of the AtlasIO repository is as follows:
 |       pct21_20votes_wMCD.json
 |       pct21_22votes.json
 |       pct21.zip    
-
+```
 ## The files contained here are : 
     * AtlasIO
         - Atlas.py
