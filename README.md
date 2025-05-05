@@ -31,8 +31,8 @@ The directory structure of the AtlasIO repository is as follows:
 ```
 ## The files contained here are : 
 * AtlasIO directory
-    - Atlas.py :
-        This is the main Atlas reader Library 
+    - AtlasIO.jl:
+        This is the main Atlas reader and writer library written in Julia. 
 * AtlasExamples directory
     - atlas_nc_multiscale.jsonl.gz :
         This is a large collection of map assignments for testing. Notice that it is compressed. The library can read compressed or uncompressed files. These multi-scale assignments come from code which try to preserve the different levels.
