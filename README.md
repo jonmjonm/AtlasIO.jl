@@ -4,7 +4,7 @@ This repository a number of tools to read in and manipulate Atlas files. The pri
 
 ## Atlas files
     
-Atlas files contain a collection of map assignments. The format is a specialization of the JSONL format. Each line in an Atlas file is a JSON object. THe first three lines describe the particular Atlas. Starting with the fourth line, each line is a JSON object that describes a map assignment. More information can be found in the [Atlas format](atlas_format.md) file.  
+Atlas files contain a collection of map assignments. The format is a specialization of the JSONL format. Each line in an Atlas file is a JSON object. THe first three lines describe the particular Atlas. Starting with the fourth line, each line is a JSON object that describes a map assignment. More information can be found in the [**Atlas format**](atlas_format.md) file.  
 
 ## Directory Structure of AtlasIO repository
 The directory structure of the AtlasIO repository is as follows:
