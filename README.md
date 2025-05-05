@@ -60,5 +60,6 @@ The directory structure of the AtlasIO repository is as follows:
     - example_atlas_multilevel_precinctHistogram.py :
         This is an example of how to load a multi-level Atlas file and create a histogram of the precincts. It reads in a file and prints out the histogram.
 
-
-
+* JuliaExamples Directory :
+    This directory contains some examples of how to use the Atlas reader library. 
+    
