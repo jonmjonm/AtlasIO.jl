@@ -49,7 +49,7 @@ The directory structure of the AtlasIO repository is as follows:
         Some helper functions that are useful.
 
 * Shapefiles_JSON Directory : 
-    This contains some election data and the adjacency data. 
+    This contains some election data and the adjacency data. Some files are in JSON files others are in ziped shapefiles.
 
 * PythonExamples Directory : 
     This directory contains some examples of how to use the Atlas reader library. 
