@@ -6,6 +6,21 @@ This repository a number of tools to read in and manipulate Atlas files. The pri
     
 Atlas files contain a collection of map assignments. The format is a specialization of the JSONL format. Each line in an Atlas file is a JSON object. THe first three lines describe the particular Atlas. Starting with the fourth line, each line is a JSON object that describes a map assignment. More information can be found in the [Atlas format](atlas_format.md) file.  
 
+## Directory Structure of AtlasIO repository
+The directory structure of the AtlasIO repository is as follows:
+
+```
++-- AtlasIO
+    |   AtlasIO.jl
++-- JuliaExamples
++-- PythonReader
+|   +-- Atlas.py
+|   +-- helper_functions.py
++-- PythonExamples
+|   +-- example_atlas.py
+|   +-- example_atlas_multilevel_loadMaps.py
+|   +-- example_atlas_multilevel_precinctHistogram.py    
+
 ## The files contained here are : 
     * Atlas.py
         This is the main Allas reader Library 
