@@ -30,9 +30,16 @@ The directory structure of the AtlasIO repository is as follows:
 |       pct21.zip    
 
 ## The files contained here are : 
-    * Atlas.py
-        This is the main Allas reader Library 
-
+    * AtlasIO
+        - Atlas.py
+            This is the main Atlas reader Library 
+    * AtlasExamples
+        - atlas_nc_multiscale.jsonl.gz
+            This is a large collection of map assignments for testing. Notice that it is compressed. The library can read compressed or uncompressed files.
+        - atlas_truncated_nc_multiscale.jsonl
+            This is part of a real Atlas file for testing. It is uncompressed. 
+        - test.jsonl
+            This is a small hand made collection of map assignments for testing. 
     * test.jsonl.gz
         This is a small hand made collection of map assignments for testing.
         Notice that it is compressed. The library can read compressed or uncompressed files.
