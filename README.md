@@ -24,7 +24,7 @@ The directory structure of the AtlasIO repository is as follows:
 |       example_atlas.py
 |       example_atlas_multilevel_loadMaps.py
 |       example_atlas_multilevel_precinctHistogram.py
-+--  Shapefiles_JSON
++-- Shapefiles_JSON
 |       pct21_20votes_wMCD.json
 |       pct21_22votes.json
 |       pct21.zip    
