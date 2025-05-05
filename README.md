@@ -9,6 +9,7 @@ Atlas files contain a collection of map assignments. The format is a specializat
 ## Directory Structure of AtlasIO repository
 The directory structure of the AtlasIO repository is as follows:
 
+```
 +-- AtlasIO
 |       AtlasIO.jl
 +-- AtlasExamples
@@ -27,7 +28,7 @@ The directory structure of the AtlasIO repository is as follows:
 |       pct21_20votes_wMCD.json
 |       pct21_22votes.json
 |       pct21.zip    
-
+```
 ## The files contained here are : 
 * AtlasIO directory
     - Atlas.py :
