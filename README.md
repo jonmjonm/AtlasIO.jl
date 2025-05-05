@@ -48,24 +48,17 @@ The directory structure of the AtlasIO repository is as follows:
     - helper_functions.py :
         Some helper functions that are useful.
 
-* pct21_20cen_wMCD.json, pct21_20cen_wMCD_updated.json
-    This contains some election data and the adjacency data. The second files as some more recent election data
+* Shapefiles_JSON Directory : 
+    This contains some election data and the adjacency data. 
 
-* helper_functions.py 
-    Some helper functions that are useful.
-
-* example_atlas.py
-    this is an example file reading in some single scale maps
-
-* example_atlas_multilevel_loadMaps.py
-    this is an example file reading in some multi-scale maps
-
-* example_atlas_multilevel_precinctHistogram.py
-    An example reading in a multi-scale assignment. These multi-scale assignments come from code which try to preserve the different levels.
-
-* example_atlas_multilevel_precinctOutcomes.py
-    this is an example 
-    
+* PythonExamples Directory : 
+    This directory contains some examples of how to use the Atlas reader library. 
+    - example_atlas.py :
+        This is a simple example of how to use the Atlas reader library. It reads in a file and prints out the number of maps and the number of precincts in each map.
+    - example_atlas_multilevel_loadMaps.py :
+        This is an example of how to load a multi-level Atlas file. It reads in a file and prints out the number of maps and the number of precincts in each map.
+    - example_atlas_multilevel_precinctHistogram.py :
+        This is an example of how to load a multi-level Atlas file and create a histogram of the precincts. It reads in a file and prints out the histogram.
 
 
 
