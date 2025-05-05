@@ -12,6 +12,10 @@ The directory structure of the AtlasIO repository is as follows:
 ```
 +-- AtlasIO
 |       AtlasIO.jl
++-- AtlasExamples
+|       atlas_nc_multiscale.jsonl.gz
+|       atlas_truncated_nc_multiscale.jsonl
+|       test.jsonl.gz
 +-- JuliaExamples
 +-- PythonReader
 |       Atlas.py
@@ -19,7 +23,11 @@ The directory structure of the AtlasIO repository is as follows:
 +-- PythonExamples
 |       example_atlas.py
 |       example_atlas_multilevel_loadMaps.py
-|       example_atlas_multilevel_precinctHistogram.py    
+|       example_atlas_multilevel_precinctHistogram.py
++--  Shapefiles_JSON
+|       pct21_20votes_wMCD.json
+|       pct21_22votes.json
+|       pct21.zip    
 
 ## The files contained here are : 
     * Atlas.py
