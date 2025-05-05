@@ -11,15 +11,15 @@ The directory structure of the AtlasIO repository is as follows:
 
 ```
 +-- AtlasIO
-    |   AtlasIO.jl
+|       AtlasIO.jl
 +-- JuliaExamples
 +-- PythonReader
-|   +-- Atlas.py
-|   +-- helper_functions.py
+|       Atlas.py
+|       helper_functions.py
 +-- PythonExamples
-|   +-- example_atlas.py
-|   +-- example_atlas_multilevel_loadMaps.py
-|   +-- example_atlas_multilevel_precinctHistogram.py    
+|       example_atlas.py
+|       example_atlas_multilevel_loadMaps.py
+|       example_atlas_multilevel_precinctHistogram.py    
 
 ## The files contained here are : 
     * Atlas.py
