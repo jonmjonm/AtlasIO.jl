@@ -10,6 +10,9 @@ Atlas files contain a collection of map assignments. The format is a specializat
 The directory structure of the AtlasIO repository is as follows:
 
 ```
+README.md
+atlas_format.md
+LICENSE
 +-- src
 |       AtlasIO.jl
 +-- AtlasExamples
@@ -30,6 +33,12 @@ The directory structure of the AtlasIO repository is as follows:
 |       pct21.zip    
 ```
 ## The files contained here are : 
+* README.md : 
+    This file. It contains a description of the repository and how to use it.
+* atlas_format.md :
+    This file contains a description of the Atlas file format. It describes the JSONL format and the different fields in the JSON objects.
+* LICENSE :
+    This file contains the license for the repository. The code is licensed under the MIT license.
 * src directory
     - AtlasIO.jl:
         This is the main Atlas reader and writer module written in Julia. 
