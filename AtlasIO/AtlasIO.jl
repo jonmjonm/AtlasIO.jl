@@ -15,7 +15,7 @@ export Map,
     smartOpen,
     skipMap,
     eof,
-    copyAtlisHeader,
+    copyAtlasHeader,
     parseBufferToMap
 
 struct AtlasHeader
@@ -214,7 +214,7 @@ function getFileExtension(filename::String)
     return filename[i:end],filename[1:i-1]
 end
 
-function copyAtlisHeader(sourceFilename::String, outFilename::String)
+function copyAtlasHeader(sourceFilename::String, outFilename::String)
     ioSource=smartOpen(sourceFilename,"r")
     ioOut=smartOpen(outFilename,"w")
     for i=1:3
