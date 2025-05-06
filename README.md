@@ -10,7 +10,7 @@ Atlas files contain a collection of map assignments. The format is a specializat
 The directory structure of the AtlasIO repository is as follows:
 
 ```
-+-- AtlasIO
++-- src
 |       AtlasIO.jl
 +-- AtlasExamples
 |       atlas_nc_multiscale.jsonl.gz
@@ -30,9 +30,9 @@ The directory structure of the AtlasIO repository is as follows:
 |       pct21.zip    
 ```
 ## The files contained here are : 
-* AtlasIO directory
+* src directory
     - AtlasIO.jl:
-        This is the main Atlas reader and writer library written in Julia. 
+        This is the main Atlas reader and writer module written in Julia. 
 * AtlasExamples directory
     - atlas_nc_multiscale.jsonl.gz :
         This is a large collection of map assignments for testing. Notice that it is compressed. The library can read compressed or uncompressed files. These multi-scale assignments come from code which try to preserve the different levels.
