@@ -1,3 +1,6 @@
+##
+## This is a very basic script. It just reads in the maps
+##
 ## Usage
 # julia read_atlas.jl <atlas name> <optional: num maps>
 #
@@ -34,11 +37,3 @@ while !AtlasIO.eof(atlas)
         " \t number of assignments in districting:",length(m.districting))
 end
 
-
-
-
-
-
-
-
- 
