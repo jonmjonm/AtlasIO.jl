@@ -20,6 +20,7 @@ LICENSE
 |       atlas_truncated_nc_multiscale.jsonl
 |       test.jsonl.gz
 +-- JuliaExamples
+        read_atlas.jl
 +-- PythonReader
 |       Atlas.py
 |       helper_functions.py
@@ -71,6 +72,7 @@ LICENSE
 
 * JuliaExamples Directory :
     This directory contains some examples of how to use the Atlas reader library. 
+    - read_atlas.jl : a simple example that loops through the maps 
     
 ## Quantifying Gerrymandering project
 This repository is part of the Quantifying Gerrymandering project. The goal of this project is to develop tools to quantify gerrymandering and to provide a platform for researchers to share their work. The project is led by a team of researchers at Duke University, including Professor Jonathan Mattingly, Professor Greg Herschlag, and many others. More information about the project can be found on the [**Quantifying Gerrymandering**](https://sites.duke.edu/quantifyinggerrymandering/) website.
