@@ -26,6 +26,9 @@ println("Running....on file ", atlasFileName)
 io=smartOpen(atlasFileName, "r")
 atlas=openAtlas(io);
 ################
+println("atlas date:",atlas.date)
+println("number of districts:",atlas.atlasParam["districts"])
+################
 mapCount=0
 while !eof(atlas)
     m = nextMap(atlas) 
