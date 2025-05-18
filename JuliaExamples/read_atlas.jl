@@ -27,7 +27,7 @@ io=smartOpen(atlasFileName, "r")
 atlas=openAtlas(io);
 ################
 mapCount=0
-while !AtlasIO.eof(atlas)
+while !eof(atlas)
     m = nextMap(atlas) 
     global mapCount+=1
     if (mapCount > maxMap)
