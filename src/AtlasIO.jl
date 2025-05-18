@@ -127,7 +127,7 @@ end
 
 """
 opens an IO stream which is wrapped in a compression pipe 
-if the fileneame extension suggests it. Currently supports .gz and .bz2.
+if the filename extension suggests it. Currently supports .gz and .bz2.
 Defaults to regular uncompressed writing/reading if not one of these extensions.
 Returns *nothing* if unsure what to do.
 """
