@@ -2,8 +2,8 @@
 # julia read_atlas.jl <atlas name>
 #
 ## Example
-# julia process_atlas.jl ../../atlas_output ../../analysis_output Grid_4x4 ../../graphs/grid_graph_4_by_4.json
-#
+# julia read_atlas.jl ../ExampleAtlas/atlas_nc_multiscale.jsonl.gz
+
 
 using Pkg
 push!(LOAD_PATH, "../src/");
@@ -25,8 +25,7 @@ while !AtlasIO.eof(atlas)
     if mapCount > maxMap 
         break
     end
-    println("map count:", mapCount, "\t map name:",m.name, " \t number of alignment in districting:",length(m.districting))
-    @show 
+    println("map count:", mapCount, "\t map name:",m.name, " \t number of assignments in districting:",length(m.districting))
 end
 
 
