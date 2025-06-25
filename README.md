@@ -1,6 +1,6 @@
 # AtlasIO
 
-This repository a number of tools to read in and manipulate Atlas files. The primary code is written in the Julia programming language, but it can be used in Python as well.
+This repository a number of tools to read in and manipulate Atlas files. The primary code is written in the Julia programming language, but it can be used in Python as well. The Python library can only read Atlas files, it cannot write them. The Julia library can read and write Atlas files.
 
 ## Atlas files 
     
