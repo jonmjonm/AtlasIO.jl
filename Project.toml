@@ -12,6 +12,7 @@ StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
 TranscodingStreams = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
 
 [compat]
+julia = "1.10"
 CodecBzip2 = "0.8.5"
 CodecZlib = "0.7.8"
 Dates = "1.11.0"
