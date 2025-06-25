@@ -10,7 +10,6 @@
 
 
 using Pkg
-push!(LOAD_PATH, "../src/");
 using AtlasIO
 @show ARGS
 
