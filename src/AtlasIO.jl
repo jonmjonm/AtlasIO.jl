@@ -1,4 +1,4 @@
-module MapAtlasIO
+module AtlasIO
 
 using StructTypes, JSON3, Dates
 using TranscodingStreams, CodecBzip2, CodecZlib
