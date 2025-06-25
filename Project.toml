@@ -1,4 +1,4 @@
-name = "AtlasIO"
+name = "MapAtlasIO"
 uuid = "d44f5655-1c95-40b4-8e53-9bdb5084f5d6"
 authors = ["Jonathan Mattingly <jonathan.mattingly@duke.edu>", "Gregory Herschlag <Gregory.Herschlag@duke.edu>"]
 version = "0.1.2"
