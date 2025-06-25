@@ -5,7 +5,7 @@
 import json
 import sys,os
 sys.path.append('../PythonReader/')
-import Atlas
+import MapAtlas
 import helper_functions as hf
 
 import matplotlib.pyplot as plt

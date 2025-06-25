@@ -14,7 +14,7 @@ README.md
 atlas_format.md
 LICENSE
 +-- src
-|       AtlasIO.jl
+|       MapAtlasIO.jl
 +-- AtlasExamples
 |       atlas_nc_multiscale.jsonl.gz
 |       atlas_truncated_nc_multiscale.jsonl
@@ -22,7 +22,7 @@ LICENSE
 +-- JuliaExamples
         read_atlas.jl
 +-- PythonReader
-|       Atlas.py
+|       MapAtlas.py
 |       helper_functions.py
 +-- PythonExamples
 |       example_atlas.py
