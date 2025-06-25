@@ -1,4 +1,4 @@
-# AtlasIO
+# MapAtlasIO
 
 This repository a number of tools to read in and manipulate Atlas files. The primary code is written in the Julia programming language, but it can be used in Python as well.
 
