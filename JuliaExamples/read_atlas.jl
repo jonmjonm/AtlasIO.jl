@@ -11,7 +11,7 @@
 
 using Pkg
 push!(LOAD_PATH, "../src/");
-using AtlasIO
+using MapAtlasIO
 @show ARGS
 
 atlasFileName = ARGS[1] # Get the file name
