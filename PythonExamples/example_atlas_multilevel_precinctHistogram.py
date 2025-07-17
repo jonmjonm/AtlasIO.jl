@@ -13,14 +13,14 @@ import pandas as pd
 import seaborn as sns
 
 
-atlasDir="../AtlasExamples/"
+atlasDir="../ExampleAtlas/"
 #atlasFileName="atlas_truncated_nc_multiscale.jsonl" #Small number of real maps
 atlasFileName="atlas_nc_multiscale.jsonl.gz" #full set of real maps
 
 pctDataDir="../Shapefile_JSON/"
 pctDataFileName="pct21_20votes_wMCD.json" 
 
-atlas = Atlas.openAtlas(os.path.join(atlasDir,atlasFileName))    
+atlas = AtlasIO.openAtlas(os.path.join(atlasDir,atlasFileName))    
 pctDataFile = open(os.path.join(pctDataDir,pctDataFileName))
 pctData = json.load(pctDataFile)
 
@@ -40,7 +40,7 @@ mapCount=0
 while map is not None:  # This loops through all of the map in the atlas
     mapCount+=1
     try:
-        map = Atlas.nextMap(atlas)  # Get the next map in the atlas 
+        map = AtlasIO.nextMap(atlas)  # Get the next map in the atlas 
         if mapCount % 5000==0 :
             print(map.name)
         # The maps are multi scale in the sense that if a county is kept whole
@@ -66,7 +66,7 @@ while map is not None:  # This loops through all of the map in the atlas
         break
 
 
-# now do somthing with data
+# now do something with data
 id = 100  # Choose precinct
 print(dataElection[id]["county"], dataElection[id]["prec_id"])
 

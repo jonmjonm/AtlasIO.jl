@@ -13,7 +13,7 @@ atlasFileName="atlas_truncated_nc_multiscale.jsonl" #Small number of real maps
 pctDataDir="../Shapefile_JSON/"
 pctDataFileName="pct21_20votes_wMCD.json"
 
-atlas = Atlas.openAtlas(os.path.join(atlasDir,atlasFileName))    
+atlas = AtlasIO.openAtlas(os.path.join(atlasDir,atlasFileName)) ##updated to AtlasIO   
 pctDataFile = open(os.path.join(pctDataDir,pctDataFileName))
 pctData = json.load(pctDataFile)
 

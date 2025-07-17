@@ -12,21 +12,21 @@ import pandas as pd
 import seaborn as sns
 
 
-atlasDir="../AtlasExamples/"
+atlasDir="../ExampleAtlas/"
 atlasFileName="atlas_truncated_nc_multiscale.jsonl" #Small number of real maps
 #atlasFileName="atlas_nc_multiscale.jsonl.gz" #full set of real maps
 
 pctDataDir="../Shapefile_JSON/"
 pctDataFileName="pct21_20votes_wMCD.json" 
 
-atlas = Atlas.openAtlas(os.path.join(atlasDir,atlasFileName))    
+atlas = AtlasIO.openAtlas(os.path.join(atlasDir,atlasFileName))    
 pctDataFile = open(os.path.join(pctDataDir,pctDataFileName))
 pctData = json.load(pctDataFile)
 
 dataElection = pctData['nodes']
 hf.addTotalVotes(dataElection)
 
-atlas = Atlas.openAtlas(os.path.join(atlasDir,atlasFileName))    
+atlas = AtlasIO.openAtlas(os.path.join(atlasDir,atlasFileName))    
 print(atlas)
 map = []
 
@@ -38,7 +38,7 @@ for node in pctData["nodes"]:
 
 while map is not None:  # This loops through all of the map in the atlas
     try:
-        map = Atlas.nextMap(atlas)  # Get the next map in the atlas 
+        map = AtlasIO.nextMap(atlas)  # Get the next map in the atlas 
         print(map.name)
         # The maps are multi scale in the sense that if a county is kept whole
         # the following fuction makes a map from precicts to districts out of 
