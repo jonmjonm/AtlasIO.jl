@@ -9,14 +9,16 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        julia-version: ['1.6', '1']
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: julia-actions/setup-julia@v1
         with:
-          version: "1"  # <-- Or your preferred Julia version
-
+          version: ${{ matrix.julia-version }}
       - name: Cache Julia deps
         uses: actions/cache@v4
         with:
@@ -25,7 +27,7 @@ jobs:
             ~/.julia/compiled
             ~/.julia/environments
             ~/.julia/packages
-          key: ${{ runner.os }}-julia-${{ hashFiles('Project.toml', 'Manifest.toml') }}
+          key: ${{ runner.os }}-julia-${{ matrix.julia-version }}-${{ hashFiles('Project.toml', 'Manifest.toml') }}
 
       - name: Install dependencies
         run: julia --project=. -e 'import Pkg; Pkg.instantiate()'
