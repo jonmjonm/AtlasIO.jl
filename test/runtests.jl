@@ -6,7 +6,7 @@ atlasFileNameGziped = joinpath(@__DIR__, "test.jsonl.gz")  # Path to your test f
 first_map_truth= Dict{Tuple{Vararg{String}}, Int64}(("p2", "c2") => 1, ("p1", "c2") => 1, ("p3", "c7", "b100") => 2)
 second_map_truth=Dict{Tuple{Vararg{String}}, Int64}(("p2", "c2") => 2, ("p1", "c2") => 1, ("p3", "c7", "b100") => 1)
 @testset verbose = true "Atlas Tests" begin
-    @testset "Compressed Atlas Reading" begin
+    @testset "Uncompressed Atlas Reading" begin
 
         io = smartOpen(atlasFileName, "r")
         atlas = openAtlas(io)
