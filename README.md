@@ -3,7 +3,7 @@
 
 [![Test CI](https://github.com/jonmjonm/AtlasIO.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/jonmjonm/AtlasIO.jl/actions/workflows/ci.yml)
 
-This repository a number of tools to read in and manipulate Atlas files. The primary code is written in the Julia programming language, but it can be used in Python as well. The Python library can only read Atlas files, it cannot write them. The Julia library can read and write Atlas files.
+This repository contains a number of tools to read in and manipulate Atlas files. The primary code is written in the Julia programming language, but it can be used in Python as well. The Python library can only read Atlas files, it cannot write them. The Julia library can read and write Atlas files.
 
 ## Atlas files 
     
@@ -38,7 +38,7 @@ LICENSE
 ```
 ## The files contained here are : 
 * README.md : 
-    This file. It contains a description of the repository and how to use it.
+    This file contains a description of the repository and how to use it.
 * atlas_format.md :
     This file contains a description of the Atlas file format. It describes the JSONL format and the different fields in the JSON objects.
 * LICENSE :
@@ -54,7 +54,7 @@ LICENSE
     - test.jsonl :
         This is a small hand made collection of map assignments for testing. Notice that it is compressed. The library can read compressed or uncompressed files.
     - atlas_measureID.jsonl.gz :
-        This is a large collection of map assignments for testing. Notice that it is compressed. The library can read compressed or uncompressed files. These multi-scale assignments come from code which try to preserve the different levels. This ensembles was used in NC 2021 court case. More info can be found in the [original repos](https://git.math.duke.edu/gitlab/gjh/ncanalysis2020/-/tree/main/ensembles/congressional)   
+        This is a large collection of map assignments for testing. Notice that it is compressed. The library can read compressed or uncompressed files. These multi-scale assignments come from code which try to preserve the different levels. This ensembles was used in a North Carolina 2021 court case. More info can be found in the [original repos](https://git.math.duke.edu/gitlab/gjh/ncanalysis2020/-/tree/main/ensembles/congressional).   
 * PythonReader Directory : This directory contains python code to read Atlas files and analyze them.
     - Atlas.py :
         This is the main Atlas reader Library. It is a python version of the Julia library. It can read compressed or uncompressed files. It can not write an Atlas file presently. Use the Julia library to write an Atlas file.
@@ -62,7 +62,7 @@ LICENSE
         Some helper functions that are useful. Examples include summing elections, performing uniform swings and obtaining the node name to district mapping. See the file for full list and description.
 
 * Shapefiles_JSON Directory : 
-    This contains some election data and the adjacency data. Some files are in JSON files others are in ziped shapefiles.
+    This contains some election data and the adjacency data. Some files are in JSON files and others are in zipped shapefiles.
 
 * PythonExamples Directory : 
     This directory contains some examples of how to use the Atlas reader library. 
