@@ -25,11 +25,12 @@ struct AtlasHeader
     date::String
     atlasParamType::String
     mapParamType::String
+    weightType::String #currently unused
 end
 StructTypes.StructType(::Type{AtlasHeader}) = StructTypes.Struct()
 
-AtlasHeader(name::String,date::String,atlasParamType::DataType,mapParamType::DataType)=AtlasHeader(name,date,string(atlasParamType),string(mapParamType))
-AtlasHeader(name::String,atlasParamType::DataType,mapParamType::DataType)=AtlasHeader(name,string(now()),string(atlasParamType),string(mapParamType))
+AtlasHeader(name::String,date::String,atlasParamType::DataType,mapParamType::DataType; weightType::DataType=Int64)=AtlasHeader(name,date,string(atlasParamType),string(mapParamType),string(weightType))
+AtlasHeader(name::String,atlasParamType::DataType,mapParamType::DataType; weightType::DataType=Int64)=AtlasHeader(name,string(now()),string(atlasParamType),string(mapParamType),string(weightType))
     
 struct Atlas{T}
     io::IO
@@ -45,7 +46,7 @@ Districting=Dict{Tuple{Vararg{String}},Int64} #Dict{String,Int64}
 Base.@kwdef struct Map{T} # T is the data type of the Data about them map. Dict must us string keys
     name::String
     districting::Districting
-    weight::Int64=1
+    weight::Real=1.0
     data::T
 end
 
@@ -78,7 +79,7 @@ function openAtlas(io::IO)::Atlas
     buff=readline(io)
     atlasHeader=JSON3.read(buff,AtlasHeader)
     
-     #print("Convert Params in openAtlas\n")
+    #print("Convert Params in openAtlas\n")
     atlas_ParamType=Dict{String,Any}#eval(Meta.parse(atlasHeader.atlasParamType))
     map_ParamType=Dict{String,Any}#eval(Meta.parse(atlasHeader.mapParamType))
     #@show map_ParamType
