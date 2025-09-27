@@ -38,19 +38,20 @@ struct Atlas{T}
     date::String
     atlasParam::T
     mapParamType::DataType
+    weightType::DataType
 end
-Atlas{T}(io::IO,atlasHeader::AtlasHeader,atlasParam::T) where T=Atlas(io,atlasHeader.description,atlasHeader.date,atlasParam,atlasHeader.mapParamType)
+Atlas{T}(io::IO,atlasHeader::AtlasHeader,atlasParam::T) where T =Atlas(io,atlasHeader.description,atlasHeader.date,atlasParam,atlasHeader.mapParamType,atlasHeader.weightType)
 
 Districting=Dict{Tuple{Vararg{String}},Int64} #Dict{String,Int64}
 
-Base.@kwdef struct Map{T} # T is the data type of the Data about them map. Dict must us string keys
+Base.@kwdef struct Map{T,W<: Real} # T is the data type of the Data about them map. Dict must us string keys
     name::String
     districting::Districting
-    weight::Real=1.0
+    weight::W
     data::T
 end
 
-function Map{T}(x::Dict{String, Any}) where T<:Any
+function Map{T,W}(x::Dict{String, Any}) where {T<:Any, W<:Real}
     dict=Dict{Tuple{Vararg{String}}, Int64}()
     for x in x["districting"]
         for (k,v) in x
@@ -58,10 +59,10 @@ function Map{T}(x::Dict{String, Any}) where T<:Any
                 dict[kk]=v
         end
     end
-    return Map(x["name"],dict,Int(x["weight"]),T(x["data"]))
+    return Map(x["name"],dict,W(x["weight"]),T(x["data"]))
 end
 StructTypes.StructType(::Type{<:Map}) = StructTypes.CustomStruct()
-StructTypes.lower(x::Map{T} where T) = (name=x.name, weight=x.weight, data=x.data, districting=[[ x for x in k] => v for (k, v) in x.districting])
+StructTypes.lower(x::Map{T,W} where {T, W<:Real}) = (name=x.name, weight=x.weight, data=x.data, districting=[[ x for x in k] => v for (k, v) in x.districting])
 
 function newAtlas(io::IO, atlasHeader::AtlasHeader, atlasParam)
     JSON3.write(io,"This is an Atlas for Redistricting Maps. See 'https://github.com/jonmjonm/AtlasIO.jl/blob/main/atlas_format.md' for more information about the format.")
@@ -72,19 +73,33 @@ function newAtlas(io::IO, atlasHeader::AtlasHeader, atlasParam)
     write(io,"\n")
 end
 
+const types=Dict{String,DataType}("Int64"=>Int64,"Float64"=>Float64)
+
 function openAtlas(io::IO)::Atlas
     #print("Entering openAtlas\n")
+    
     buff=readline(io) #throw away initial line
     
     buff=readline(io)
-    atlasHeader=JSON3.read(buff,AtlasHeader)
-    
+    @show buff
+    atlasHeaderDict=JSON3.read(buff,Dict{String,String})
+    @show atlasHeaderDict
+    @show typeof(atlasHeaderDict)
+    if !haskey(atlasHeaderDict,"weightType")
+        @show "missing weightType, adding default Int64"
+        atlasHeaderDict["weightType"]="Int64"
+    end    
+    @show atlasHeaderDict
+
+    atlasHeader=AtlasHeader(atlasHeaderDict["description"],atlasHeaderDict["date"],atlasHeaderDict["atlasParamType"],atlasHeaderDict["mapParamType"],atlasHeaderDict["weightType"])
+    #atlasHeader=JSON3.read(buff,AtlasHeader)
+    @show atlasHeader
     #print("Convert Params in openAtlas\n")
     atlas_ParamType=Dict{String,Any}#eval(Meta.parse(atlasHeader.atlasParamType))
     map_ParamType=Dict{String,Any}#eval(Meta.parse(atlasHeader.mapParamType))
     #@show map_ParamType
     #@show atlas_ParamType
-    
+    weight_type=types[atlasHeader.weightType] #ensure weight type is defined
     
     #print("Reading atlasParam in openAtlas\n")
     buff=readline(io)
@@ -92,14 +107,14 @@ function openAtlas(io::IO)::Atlas
     #print("atlasParam :",atlasParam," : ",typeof(atlasParam),"\n")
     
     #print("making atlas in openAtlas\n")
-    atlas=Atlas{map_ParamType}(io,atlasHeader.description,atlasHeader.date,atlasParam,map_ParamType)
+    atlas=Atlas{map_ParamType}(io,atlasHeader.description,atlasHeader.date,atlasParam,map_ParamType, weight_type)
     
     return atlas
 end
     
 function nextMap(atlas::Atlas)::Map
     buff=readline(atlas.io)
-    map=JSON3.read(buff,Map{atlas.mapParamType})
+    map=JSON3.read(buff,Map{atlas.mapParamType,atlas.weightType})
     return map
 end
 
