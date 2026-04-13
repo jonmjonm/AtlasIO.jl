@@ -5,17 +5,20 @@ sys.path.append('../PythonReader/')
 import AtlasIO
 import helper_functions as hf
 
-atlasDir="../AtlasExamples/"
+atlasDir="../ExampleAtlas/"
 #atlasFileName="test.jsonl"  #fake simple maps
 atlasFileName="atlas_truncated_nc_multiscale.jsonl" #Small number of real maps
 #atlasFileName="atlas_nc_multiscale.jsonl.gz" #full set of real maps
 
-pctDataDir="../Shapefile_JSON/"
-pctDataFileName="pct21_20votes_wMCD.json"
+
 
 atlas = AtlasIO.openAtlas(os.path.join(atlasDir,atlasFileName)) ##updated to AtlasIO   
-pctDataFile = open(os.path.join(pctDataDir,pctDataFileName))
-pctData = json.load(pctDataFile)
+
+## Uncomment if you want to load json with adjacency data
+#pctDataDir="../Shapefile_JSON/"
+#pctDataFileName="pct21_20votes_wMCD.json"
+#pctDataFile = open(os.path.join(pctDataDir,pctDataFileName))
+#pctData = json.load(pctDataFile)
 
 print(atlas)
 map=[]
