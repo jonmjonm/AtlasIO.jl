@@ -21,7 +21,7 @@ print(atlas)
 map=[]
 print("\n")
 while map!=None:
-    map=Atlas.nextMap(atlas)
+    map=AtlasIO.nextMap(atlas)
     if map==None:
         break
     print(map)
