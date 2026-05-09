@@ -1,56 +1,153 @@
 using Test
 using AtlasIO
 
-atlasFileName = joinpath(@__DIR__, "test.jsonl")  # Path to your test file
-atlasFileNameGziped = joinpath(@__DIR__, "test.jsonl.gz")  # Path to your test file
-first_map_truth= Dict{Tuple{Vararg{String}}, Int64}(("p2", "c2") => 1, ("p1", "c2") => 1, ("p3", "c7", "b100") => 2)
-second_map_truth=Dict{Tuple{Vararg{String}}, Int64}(("p2", "c2") => 2, ("p1", "c2") => 1, ("p3", "c7", "b100") => 1)
-@testset verbose = true "Atlas Tests" begin
-    @testset "Uncompressed Atlas Reading" begin
+const atlasFileName   = joinpath(@__DIR__, "test.jsonl")
+const atlasFileNameGz = joinpath(@__DIR__, "test.jsonl.gz")
 
+const TOTAL_MAPS = 14
+
+const first_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
+    ("p2", "c2") => 1, ("p1", "c2") => 1, ("p3", "c7", "b100") => 2)
+const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
+    ("p2", "c2") => 2, ("p1", "c2") => 1, ("p3", "c7", "b100") => 1)
+
+@testset verbose=true "Atlas Tests" begin
+
+    @testset "Uncompressed Reading" begin
         io = smartOpen(atlasFileName, "r")
         atlas = openAtlas(io)
-        @test !eof(atlas)  # The atlas should have content
-        @test atlas.description == "Test Atlas"  # Replace with expected description
+        @test !eof(atlas)
+        @test atlas.description == "Test Atlas"
+        @test atlas.date == "2021-08-04T08:58:22.216"
+        @test atlas.atlasParam["county"] == 2
+        @test atlas.atlasParam["gamama"] == 4
 
-        # Read the first map and check its properties
-        first_map = nextMap(atlas)
-        # Example checks — adapt to your test file fields
-        @test first_map.name == "map1"  # Replace "map1" with expected map name
-        @test length(first_map.districting) == 3  # Replace 100 with expected size
-        @test first_map.districting == first_map_truth  # Check if the first map matches the expected structure
-        
-        second_map = nextMap(atlas)
-        @test second_map.name == "map2"  # Replace "map1" with expected map name
-        @test length(second_map.districting) == 3  # Replace 100 with expected size
-        @test second_map.districting == second_map_truth  # Check if the first map matches the expected structure
+        m1 = nextMap(atlas)
+        @test m1.name == "map1"
+        @test m1.weight == 1
+        @test length(m1.districting) == 3
+        @test m1.districting == first_map_truth
 
+        m2 = nextMap(atlas)
+        @test m2.name == "map2"
+        @test m2.districting == second_map_truth
 
-        # Clean up
         close(io)
     end
 
-    @testset "Compressed Atlas Reading" begin
-
-        io = smartOpen(atlasFileNameGziped, "r")
+    @testset "Gzip Reading" begin
+        io = smartOpen(atlasFileNameGz, "r")
         atlas = openAtlas(io)
-        @test !eof(atlas)  # The atlas should have content
-        @test atlas.description == "Test Atlas"  # Replace with expected description
+        @test !eof(atlas)
+        @test atlas.description == "Test Atlas"
+        @test atlas.atlasParam["county"] == 2
 
-        # Read the first map and check its properties
-        first_map = nextMap(atlas)
-        # Example checks — adapt to your test file fields
-        @test first_map.name == "map1"  # Replace "map1" with expected map name
-        @test length(first_map.districting) == 3  # Replace 100 with expected size
-        @test first_map.districting == first_map_truth  # Check if the first map matches the expected structure
-        
-        second_map = nextMap(atlas)
-        @test second_map.name == "map2"  # Replace "map1" with expected map name
-        @test length(second_map.districting) == 3  # Replace 100 with expected size
-        @test second_map.districting == second_map_truth  # Check if the first map matches the expected structure
+        m1 = nextMap(atlas)
+        @test m1.name == "map1"
+        @test m1.districting == first_map_truth
 
+        m2 = nextMap(atlas)
+        @test m2.name == "map2"
+        @test m2.districting == second_map_truth
 
-        # Clean up
         close(io)
-    end;
-end;
+    end
+
+    @testset "EOF Detection" begin
+        io = smartOpen(atlasFileName, "r")
+        atlas = openAtlas(io)
+        count = 0
+        while !eof(atlas)
+            nextMap(atlas)
+            count += 1
+        end
+        @test count == TOTAL_MAPS
+        @test eof(atlas)
+        close(io)
+    end
+
+    @testset "Weight Field" begin
+        io = smartOpen(atlasFileName, "r")
+        atlas = openAtlas(io)
+        m1 = nextMap(atlas)
+        @test m1.weight == 1
+        nextMap(atlas)  # map2
+        nextMap(atlas)  # map3
+        m10 = nextMap(atlas)  # map-10
+        @test m10.name == "map-10"
+        @test m10.weight == 10
+        close(io)
+    end
+
+    @testset "skipMap" begin
+        io = smartOpen(atlasFileName, "r")
+        atlas = openAtlas(io)
+        m1 = nextMap(atlas)
+        @test m1.name == "map1"
+        skipMap(atlas)          # skips map2
+        m3 = nextMap(atlas)
+        @test m3.name == "map3"
+        close(io)
+    end
+
+    @testset "parseBufferToMap" begin
+        io = smartOpen(atlasFileName, "r")
+        atlas = openAtlas(io)
+        raw_line = readline(atlas.io)  # first map line, position is after the 3-line header
+        m = parseBufferToMap(atlas, raw_line)
+        @test m.name == "map1"
+        @test m.districting == first_map_truth
+        close(io)
+    end
+
+    @testset "Write/Read Round-trip" begin
+        header = AtlasHeader("RT Atlas", "2024-01-01T00:00:00", "Dict{String,Any}", "Dict{String,Any}")
+        params = Dict{String,Any}("n" => 2)
+        dist_a = Districting(("r1",) => 1, ("r2",) => 2)
+        dist_b = Districting(("r1",) => 2, ("r2",) => 1)
+
+        for (suffix, label) in [(".jsonl", "uncompressed"), (".jsonl.gz", "gzip"), (".jsonl.bz2", "bzip2")]
+            @testset "$label" begin
+                tmpfile = tempname() * suffix
+
+                io_w = smartOpen(tmpfile, "w")
+                newAtlas(io_w, header, params)
+                addMap(io_w, Map{Dict{String,Any}}(name="alpha", districting=dist_a, weight=1, data=Dict{String,Any}()))
+                addMap(io_w, Map{Dict{String,Any}}(name="beta",  districting=dist_b, weight=7, data=Dict{String,Any}()))
+                close(io_w)
+
+                io_r = smartOpen(tmpfile, "r")
+                atlas = openAtlas(io_r)
+                @test atlas.description == "RT Atlas"
+                @test atlas.atlasParam["n"] == 2
+
+                ma = nextMap(atlas)
+                @test ma.name == "alpha"
+                @test ma.weight == 1
+                @test ma.districting == dist_a
+
+                mb = nextMap(atlas)
+                @test mb.name == "beta"
+                @test mb.weight == 7
+                @test mb.districting == dist_b
+
+                @test eof(atlas)
+                close(io_r)
+                rm(tmpfile)
+            end
+        end
+    end
+
+    @testset "copyAtlasHeader" begin
+        tmpfile = tempname() * ".jsonl"
+        copyAtlasHeader(atlasFileName, tmpfile)
+        io = smartOpen(tmpfile, "r")
+        atlas = openAtlas(io)
+        @test atlas.description == "Test Atlas"
+        @test atlas.date == "2021-08-04T08:58:22.216"
+        @test eof(atlas)   # header only — no map lines
+        close(io)
+        rm(tmpfile)
+    end
+
+end
