@@ -150,4 +150,134 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
         rm(tmpfile)
     end
 
+    @testset "copyAtlasHeader compressed" begin
+        for (src, dst) in [(atlasFileNameGz, tempname()*".jsonl"),
+                           (atlasFileName,   tempname()*".jsonl.gz"),
+                           (atlasFileName,   tempname()*".jsonl.bz2")]
+            copyAtlasHeader(src, dst)
+            io = smartOpen(dst, "r")
+            atlas = openAtlas(io)
+            @test atlas.description == "Test Atlas"
+            @test eof(atlas)
+            close(io)
+            rm(dst)
+        end
+    end
+
+    @testset "skipMap numSkip>1" begin
+        io = smartOpen(atlasFileName, "r")
+        atlas = openAtlas(io)
+        skipMap(atlas; numSkip=2)   # skips map1 and map2
+        m3 = nextMap(atlas)
+        @test m3.name == "map3"
+        close(io)
+    end
+
+    @testset "addMap low-level overload" begin
+        tmpfile = tempname() * ".jsonl"
+        header = AtlasHeader("LLW Atlas", "2024-06-01T00:00:00", "Dict{String,Any}", "Dict{String,Any}")
+        params = Dict{String,Any}("n" => 1)
+        dist   = Districting(("r1",) => 1, ("r2",) => 2)
+        data   = Dict{String,Any}("votes" => 99)
+
+        io_w = smartOpen(tmpfile, "w")
+        newAtlas(io_w, header, params)
+        addMap(io_w, dist, "mymap", Int64(3), data)
+        close(io_w)
+
+        io_r = smartOpen(tmpfile, "r")
+        atlas = openAtlas(io_r)
+        m = nextMap(atlas)
+        @test m.name == "mymap"
+        @test m.weight == 3
+        @test m.districting == dist
+        @test eof(atlas)
+        close(io_r)
+        rm(tmpfile)
+    end
+
+    @testset "smartOpen fallback extension" begin
+        # request .jsonl.gz that doesn't exist — falls back to .jsonl
+        plain = tempname() * ".jsonl"
+        cp(atlasFileName, plain)
+        io = smartOpen(plain * ".gz", "r")
+        @test io !== nothing
+        atlas = openAtlas(io)
+        @test atlas.description == "Test Atlas"
+        close(io)
+        rm(plain)
+
+        # request .jsonl that doesn't exist — falls back to .jsonl.gz
+        gz = tempname() * ".jsonl.gz"
+        cp(atlasFileNameGz, gz)
+        io2 = smartOpen(replace(gz, ".gz" => ""), "r")
+        @test io2 !== nothing
+        atlas2 = openAtlas(io2)
+        @test atlas2.description == "Test Atlas"
+        close(io2)
+        rm(gz)
+    end
+
+    @testset "AtlasHeader DataType constructors" begin
+        h1 = AtlasHeader("A", "2024-01-01T00:00:00", Dict{String,Any}, Dict{String,Any})
+        @test h1.description == "A"
+        @test h1.atlasParamType == "Dict{String, Any}"
+        @test h1.mapParamType  == "Dict{String, Any}"
+
+        h2 = AtlasHeader("B", Dict{String,Any}, Dict{String,Any})
+        @test h2.description == "B"
+        @test h2.atlasParamType == "Dict{String, Any}"
+        @test !isempty(h2.date)   # auto-filled with now()
+    end
+
+    @testset "nextMap with EachLine iterator" begin
+        io = smartOpen(atlasFileName, "r")
+        atlas = openAtlas(io)
+        iter = eachline(atlas.io)
+        m1 = nextMap(atlas, iter)
+        @test m1.name == "map1"
+        @test m1.districting == first_map_truth
+        m2 = nextMap(atlas, iter)
+        @test m2.name == "map2"
+        close(io)
+    end
+
+    @testset "close(atlas)" begin
+        io = smartOpen(atlasFileName, "r")
+        atlas = openAtlas(io)
+        nextMap(atlas)
+        close(atlas)   # Atlas overload, not close(io)
+        @test isopen(io) == false
+    end
+
+    @testset "Map data field" begin
+        io = smartOpen(atlasFileName, "r")
+        atlas = openAtlas(io)
+        m1 = nextMap(atlas)
+        @test m1.data["param"] == 2
+        @test m1.data["trees"] == 4
+        close(io)
+    end
+
+    @testset "Round-trip with non-empty data" begin
+        tmpfile = tempname() * ".jsonl"
+        header = AtlasHeader("Data Atlas", "2024-01-01T00:00:00", "Dict{String,Any}", "Dict{String,Any}")
+        params = Dict{String,Any}()
+        dist   = Districting(("x",) => 1)
+        data   = Dict{String,Any}("score" => 3.14, "label" => "test")
+
+        io_w = smartOpen(tmpfile, "w")
+        newAtlas(io_w, header, params)
+        addMap(io_w, Map{Dict{String,Any}}(name="d1", districting=dist, weight=1, data=data))
+        close(io_w)
+
+        io_r = smartOpen(tmpfile, "r")
+        atlas = openAtlas(io_r)
+        m = nextMap(atlas)
+        @test m.data["score"]  == 3.14
+        @test m.data["label"]  == "test"
+        close(io_r)
+        rm(tmpfile)
+    end
+
 end
