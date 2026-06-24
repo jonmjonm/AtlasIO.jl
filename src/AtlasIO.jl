@@ -79,7 +79,25 @@ function Map{T}(x::Dict{String, Any}) where T<:Any
     return Map(x["name"],dict,Int(x["weight"]),T(x["data"]))
 end
 StructTypes.StructType(::Type{<:Map}) = StructTypes.CustomStruct()
-StructTypes.lower(x::Map{T} where T) = (name=x.name, weight=x.weight, data=x.data, districting=[[ x for x in k] => v for (k, v) in x.districting])
+
+function districtKeyString(k)
+    buf=IOBuffer()
+    write(buf,'[')
+    first=true
+    for s in k
+        first ? (first=false) : write(buf,", ")
+        write(buf,'"')
+        for c in codeunits(s)
+            (c==UInt8('"') || c==UInt8('\\')) && write(buf,UInt8('\\'))
+            write(buf,c)
+        end
+        write(buf,'"')
+    end
+    write(buf,']')
+    return String(take!(buf))
+end
+
+StructTypes.lower(x::Map{T} where T) = (name=x.name, weight=x.weight, data=x.data, districting=[districtKeyString(k) => v for (k, v) in x.districting])
 
 function newAtlas(io::IO, atlasHeader::AtlasHeader, atlasParam)
     JSON3.write(io,"This is an Atlas for Redistricting Maps. See 'https://github.com/jonmjonm/AtlasIO.jl/blob/main/atlas_format.md' for more information about the format.")
