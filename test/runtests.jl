@@ -280,4 +280,26 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
         rm(tmpfile)
     end
 
+    @testset "Districting key with comma" begin
+        tmpfile = tempname() * ".jsonl"
+        header = AtlasHeader("Comma Atlas", "2024-01-01T00:00:00", "Dict{String,Any}", "Dict{String,Any}")
+        params = Dict{String,Any}()
+        dist   = Districting(("DAVIDSON", "12,14") => 11, ("GASTON",) => 14)
+
+        io_w = smartOpen(tmpfile, "w")
+        newAtlas(io_w, header, params)
+        addMap(io_w, Map{Dict{String,Any}}(name="c1", districting=dist, weight=1, data=Dict{String,Any}()))
+        close(io_w)
+
+        io_r = smartOpen(tmpfile, "r")
+        atlas = openAtlas(io_r)
+        m = nextMap(atlas)
+        @test m.name == "c1"
+        @test m.districting == dist
+        @test m.districting[("DAVIDSON", "12,14")] == 11
+        @test eof(atlas)
+        close(io_r)
+        rm(tmpfile)
+    end
+
 end
