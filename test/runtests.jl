@@ -280,6 +280,16 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
         rm(tmpfile)
     end
 
+    @testset "Byte-identical serialization" begin
+        m = Map{Dict{String,Any}}(name="m1", districting=Districting(("DAVIDSON", "12,14") => 2),
+                                   weight=3, data=Dict{String,Any}())
+        expected = "{\"name\":\"m1\",\"weight\":3,\"data\":{},\"districting\":[{\"[\\\"DAVIDSON\\\", \\\"12,14\\\"]\":2}]}"
+
+        io = IOBuffer()
+        addMap(io, m)
+        @test String(take!(io)) == expected * "\n"
+    end
+
     @testset "Districting key with comma" begin
         tmpfile = tempname() * ".jsonl"
         header = AtlasHeader("Comma Atlas", "2024-01-01T00:00:00", "Dict{String,Any}", "Dict{String,Any}")
