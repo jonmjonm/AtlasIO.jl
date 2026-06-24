@@ -49,11 +49,30 @@ Base.@kwdef struct Map{T} # T is the data type of the Data about them map. Dict 
     data::T
 end
 
+function parseDistrictKey(s::AbstractString)
+    toks=String[]
+    cu=codeunits(s)
+    i=1; n=length(cu)
+    @inbounds while i<=n
+        if cu[i]==UInt8('"')
+            i+=1
+            buf=IOBuffer()
+            while i<=n && cu[i]!=UInt8('"')
+                (cu[i]==UInt8('\\') && i<n) && (i+=1)
+                write(buf,cu[i]); i+=1
+            end
+            push!(toks,String(take!(buf)))
+        end
+        i+=1
+    end
+    return Tuple(toks)
+end
+
 function Map{T}(x::Dict{String, Any}) where T<:Any
     dict=Dict{Tuple{Vararg{String}}, Int64}()
     for x in x["districting"]
         for (k,v) in x
-                kk=Tuple{Vararg{String}}(JSON3.read(k))
+                kk=parseDistrictKey(k)
                 dict[kk]=v
         end
     end
