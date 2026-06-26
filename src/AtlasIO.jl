@@ -132,9 +132,9 @@ function openAtlas(io::IO)::Atlas
     #@show atlasHeaderDict
     #@show typeof(atlasHeaderDict)
     if !haskey(atlasHeaderDict,"weightType")
-        @show "missing weightType, adding default Int64"
+        #missing weightType, adding default Int64
         atlasHeaderDict["weightType"]="Int64"
-    end    
+    end
     #@show atlasHeaderDict
 
     atlasHeader=AtlasHeader(atlasHeaderDict["description"],atlasHeaderDict["date"],atlasHeaderDict["atlasParamType"],atlasHeaderDict["mapParamType"],atlasHeaderDict["weightType"])
