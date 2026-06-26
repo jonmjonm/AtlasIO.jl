@@ -8,6 +8,7 @@ class Atlas:
     date = ""
     atlasParamType = ""
     mapParamType = ""
+    weightType = "Int64"
     atlasParam = dict()
     fp = None
 
@@ -49,7 +50,9 @@ def openAtlas(fileName):
     atlas.date = atlasHeader["date"]
     atlas.atlasParamType = atlasHeader["atlasParamType"]
     atlas.mapParamType = atlasHeader["mapParamType"]
-    line = fp.readline() 
+    # Old (pre-float_weights) files have no weightType; default to Int64.
+    atlas.weightType = atlasHeader.get("weightType", "Int64")
+    line = fp.readline()
     atlas.atlasParam = json.loads(line)
 
     return atlas
