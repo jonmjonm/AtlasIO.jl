@@ -31,6 +31,8 @@ StructTypes.StructType(::Type{AtlasHeader}) = StructTypes.Struct()
 
 AtlasHeader(name::String,date::String,atlasParamType::DataType,mapParamType::DataType; weightType::DataType=Int64)=AtlasHeader(name,date,string(atlasParamType),string(mapParamType),string(weightType))
 AtlasHeader(name::String,atlasParamType::DataType,mapParamType::DataType; weightType::DataType=Int64)=AtlasHeader(name,string(now()),string(atlasParamType),string(mapParamType),string(weightType))
+# Back-compat: pre-float_weights headers had no weightType; default it to Int64
+AtlasHeader(name::String,date::String,atlasParamType::String,mapParamType::String; weightType::String="Int64")=AtlasHeader(name,date,atlasParamType,mapParamType,weightType)
     
 struct Atlas{T}
     io::IO
@@ -61,6 +63,11 @@ function Map{T,W}(x::Dict{String, Any}) where {T<:Any, W<:Real}
     end
     return Map(x["name"],dict,W(x["weight"]),T(x["data"]))
 end
+# Back-compat: allow constructing a Map with only the data type parameter;
+# the weight type W is inferred from the supplied weight (defaults to Int64-style ints).
+Map{T}(; name, districting, weight, data) where T = Map{T,typeof(weight)}(name, districting, weight, data)
+Map{T}(name, districting, weight, data) where T = Map{T,typeof(weight)}(name, districting, weight, data)
+
 StructTypes.StructType(::Type{<:Map}) = StructTypes.CustomStruct()
 StructTypes.lower(x::Map{T,W} where {T, W<:Real}) = (name=x.name, weight=x.weight, data=x.data, districting=[[ x for x in k] => v for (k, v) in x.districting])
 
@@ -119,12 +126,12 @@ function nextMap(atlas::Atlas)::Map
 end
 
 function parseBufferToMap(atlas::Atlas,buff::String)::Map
-    map=JSON3.read(buff,Map{atlas.mapParamType})
+    map=JSON3.read(buff,Map{atlas.mapParamType,atlas.weightType})
     return map
 end
 function nextMap(atlas::Atlas,ioIterator::Base.EachLine)::Map
     buff=first(ioIterator)
-    map=JSON3.read(buff,Map{atlas.mapParamType})
+    map=JSON3.read(buff,Map{atlas.mapParamType,atlas.weightType})
     return map
 end
 

@@ -12,7 +12,6 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
     ("p2", "c2") => 2, ("p1", "c2") => 1, ("p3", "c7", "b100") => 1)
 
 @testset verbose=true "Atlas Tests" begin
-
     @testset "Uncompressed Reading" begin
         io = smartOpen(atlasFileName, "r")
         atlas = openAtlas(io)
@@ -66,19 +65,6 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
         close(io)
     end
 
-        # Read the first map and check its properties
-        first_map = nextMap(atlas)
-        # Example checks — adapt to your test file fields
-        @test first_map.name == "map1"  # Replace "map1" with expected map name
-        @test length(first_map.districting) == 3  # Replace 100 with expected size
-        @test first_map.districting == first_map_truth  # Check if the first map matches the expected structure
-        
-        second_map = nextMap(atlas)
-        @show second_map
-        @show typeof(second_map)
-        @test second_map.name == "map2"  # Replace "map1" with expected map name
-        @test length(second_map.districting) == 3  # Replace 100 with expected size
-        @test second_map.districting == second_map_truth  # Check if the first map matches the expected structure
     @testset "Weight Field" begin
         io = smartOpen(atlasFileName, "r")
         atlas = openAtlas(io)
