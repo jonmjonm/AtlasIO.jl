@@ -279,4 +279,99 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
         rm(tmpfile)
     end
 
+    @testset "Byte-identical serialization" begin
+        m = Map{Dict{String,Any}}(name="m1", districting=Districting(("DAVIDSON", "12,14") => 2),
+                                   weight=3, data=Dict{String,Any}())
+        expected = "{\"name\":\"m1\",\"weight\":3,\"data\":{},\"districting\":[{\"[\\\"DAVIDSON\\\", \\\"12,14\\\"]\":2}]}"
+
+        io = IOBuffer()
+        addMap(io, m)
+        @test String(take!(io)) == expected * "\n"
+    end
+
+    @testset "readMapsParallel parity" begin
+        for (file, label) in [(atlasFileName, "uncompressed"), (atlasFileNameGz, "gzip")]
+            @testset "$label" begin
+                # serial reference
+                io = smartOpen(file, "r"); atlas = openAtlas(io)
+                serial = AtlasIO.Map[]
+                while !eof(atlas); push!(serial, nextMap(atlas)); end
+                close(io)
+
+                # parallel, small batch to force multiple chunks over 14 maps
+                io2 = smartOpen(file, "r"); atlas2 = openAtlas(io2)
+                par = readMapsParallel(atlas2; batch=4)
+                @test eof(atlas2)
+                close(io2)
+
+                @test length(par) == TOTAL_MAPS
+                @test [m.name for m in par] == [m.name for m in serial]
+                @test [m.districting for m in par] == [m.districting for m in serial]
+                @test [m.weight for m in par] == [m.weight for m in serial]
+            end
+        end
+
+        # `n` bound and composition with skipMap
+        io = smartOpen(atlasFileName, "r"); atlas = openAtlas(io)
+        skipMap(atlas)                       # drop map1
+        par = readMapsParallel(atlas; n=2, batch=1)
+        @test length(par) == 2
+        @test par[1].name == "map2"
+        @test !eof(atlas)                    # n bound stopped before EOF
+        close(io)
+    end
+
+    @testset "addMaps parity with addMap" begin
+        maps = [
+            Map{Dict{String,Any}}(name="a", districting=Districting(("r1",)=>1), weight=1, data=Dict{String,Any}()),
+            Map{Dict{String,Any}}(name="b", districting=Districting(("DAVIDSON","12,14")=>2), weight=7, data=Dict{String,Any}("v"=>3)),
+            Map{Dict{String,Any}}(name="c", districting=Districting(("x",)=>1,("y",)=>2), weight=2, data=Dict{String,Any}()),
+        ]
+        io_serial = IOBuffer()
+        for m in maps; addMap(io_serial, m); end
+        expected = take!(io_serial)
+
+        io_batch = IOBuffer()
+        nb = addMaps(io_batch, maps)
+        got = take!(io_batch)
+
+        @test got == expected            # byte-identical
+        @test nb == length(got)
+
+        # round-trips through a real file
+        tmpfile = tempname() * ".jsonl"
+        header = AtlasHeader("Batch Atlas", "2024-01-01T00:00:00", "Dict{String,Any}", "Dict{String,Any}")
+        io_w = smartOpen(tmpfile, "w")
+        newAtlas(io_w, header, Dict{String,Any}())
+        addMaps(io_w, maps)
+        close(io_w)
+        io_r = smartOpen(tmpfile, "r"); atlas = openAtlas(io_r)
+        back = readMapsParallel(atlas)
+        @test [m.name for m in back] == ["a", "b", "c"]
+        @test back[2].districting == Districting(("DAVIDSON","12,14")=>2)
+        close(io_r); rm(tmpfile)
+    end
+
+    @testset "Districting key with comma" begin
+        tmpfile = tempname() * ".jsonl"
+        header = AtlasHeader("Comma Atlas", "2024-01-01T00:00:00", "Dict{String,Any}", "Dict{String,Any}")
+        params = Dict{String,Any}()
+        dist   = Districting(("DAVIDSON", "12,14") => 11, ("GASTON",) => 14)
+
+        io_w = smartOpen(tmpfile, "w")
+        newAtlas(io_w, header, params)
+        addMap(io_w, Map{Dict{String,Any}}(name="c1", districting=dist, weight=1, data=Dict{String,Any}()))
+        close(io_w)
+
+        io_r = smartOpen(tmpfile, "r")
+        atlas = openAtlas(io_r)
+        m = nextMap(atlas)
+        @test m.name == "c1"
+        @test m.districting == dist
+        @test m.districting[("DAVIDSON", "12,14")] == 11
+        @test eof(atlas)
+        close(io_r)
+        rm(tmpfile)
+    end
+
 end
