@@ -81,19 +81,19 @@ function openAtlas(io::IO)::Atlas
     buff=readline(io) #throw away initial line
     
     buff=readline(io)
-    @show buff
+    #@show buff
     atlasHeaderDict=JSON3.read(buff,Dict{String,String})
-    @show atlasHeaderDict
-    @show typeof(atlasHeaderDict)
+    #@show atlasHeaderDict
+    #@show typeof(atlasHeaderDict)
     if !haskey(atlasHeaderDict,"weightType")
         @show "missing weightType, adding default Int64"
         atlasHeaderDict["weightType"]="Int64"
     end    
-    @show atlasHeaderDict
+    #@show atlasHeaderDict
 
     atlasHeader=AtlasHeader(atlasHeaderDict["description"],atlasHeaderDict["date"],atlasHeaderDict["atlasParamType"],atlasHeaderDict["mapParamType"],atlasHeaderDict["weightType"])
     #atlasHeader=JSON3.read(buff,AtlasHeader)
-    @show atlasHeader
+    #@show atlasHeader
     #print("Convert Params in openAtlas\n")
     atlas_ParamType=Dict{String,Any}#eval(Meta.parse(atlasHeader.atlasParamType))
     map_ParamType=Dict{String,Any}#eval(Meta.parse(atlasHeader.mapParamType))
