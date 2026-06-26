@@ -234,7 +234,7 @@ function addMap(io::IO,map::Map{T}) where T
     write(io,buff)+write(io,"\n")
 end
 
-function addMap(io::IO,dist::Districting,name::String,w::Int64,mapParams)
+function addMap(io::IO,dist::Districting,name::String,w::Real,mapParams)
    addMap(io,Map{typeof(mapParams)}(name,dist,w,mapParams))
 end
 

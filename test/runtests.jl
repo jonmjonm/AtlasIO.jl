@@ -374,4 +374,53 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
         rm(tmpfile)
     end
 
+    @testset "Float weights round-trip" begin
+        tmpfile = tempname() * ".jsonl"
+        header = AtlasHeader("Float Atlas", "2024-01-01T00:00:00",
+                             Dict{String,Any}, Dict{String,Any}; weightType=Float64)
+        @test header.weightType == "Float64"
+        params = Dict{String,Any}()
+        dist   = Districting(("r1",) => 1, ("r2",) => 2)
+
+        io_w = smartOpen(tmpfile, "w")
+        newAtlas(io_w, header, params)
+        addMap(io_w, Map{Dict{String,Any}}(name="f1", districting=dist, weight=2.5, data=Dict{String,Any}()))
+        addMap(io_w, dist, "f2", 3.75, Dict{String,Any}())   # low-level overload now accepts Real
+        close(io_w)
+
+        io_r = smartOpen(tmpfile, "r")
+        atlas = openAtlas(io_r)
+        @test atlas.weightType == Float64        # weightType survives write→read
+        m1 = nextMap(atlas)
+        @test m1.name == "f1"
+        @test m1.weight == 2.5
+        @test m1.weight isa Float64
+        m2 = nextMap(atlas)
+        @test m2.name == "f2"
+        @test m2.weight == 3.75
+        @test m2.weight isa Float64
+        @test eof(atlas)
+        close(io_r)
+        rm(tmpfile)
+    end
+
+    @testset "weightType back-compat default" begin
+        # test.jsonl header has no weightType; it must default to Int64.
+        io = smartOpen(atlasFileName, "r")
+        atlas = openAtlas(io)
+        @test atlas.weightType == Int64
+        m1 = nextMap(atlas)
+        @test m1.weight == 1
+        @test m1.weight isa Int64
+        close(io)
+    end
+
+    @testset "AtlasHeader weightType constructor" begin
+        h = AtlasHeader("F", "2024-01-01T00:00:00",
+                        Dict{String,Any}, Dict{String,Any}; weightType=Float64)
+        @test h.weightType == "Float64"
+        hdef = AtlasHeader("G", "2024-01-01T00:00:00", Dict{String,Any}, Dict{String,Any})
+        @test hdef.weightType == "Int64"          # default when unspecified
+    end
+
 end

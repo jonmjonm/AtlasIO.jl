@@ -1,5 +1,6 @@
 import sys
 import os
+import json
 import pytest
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -55,6 +56,61 @@ def test_header_atlas_param_county(atlas):
 
 def test_header_atlas_param_gamama(atlas):
     assert atlas.atlasParam["gamama"] == 4
+
+def test_header_weight_type_default(atlas):
+    # test.jsonl is a pre-float_weights file with no weightType key; it must
+    # default to "Int64" rather than raising a KeyError.
+    assert atlas.weightType == "Int64"
+
+def test_header_weight_type_explicit(tmp_path):
+    # A header that declares weightType should be read through verbatim.
+    header = {
+        "description": "Float Atlas",
+        "date": "2026-06-26T00:00:00.000",
+        "atlasParamType": "Dict{String, Int64}",
+        "mapParamType": "Dict{String, Int64}",
+        "weightType": "Float64",
+    }
+    path = tmp_path / "float.jsonl"
+    with open(path, "w") as f:
+        f.write('"comment line"\n')
+        f.write(json.dumps(header) + "\n")
+        f.write("{}\n")          # atlasParam
+    a = AtlasIO.openAtlas(str(path))
+    try:
+        assert a.weightType == "Float64"
+    finally:
+        AtlasIO.closeAtlas(a)
+
+def test_float_weight_value(tmp_path):
+    # A fractional weight must read back as a Python float with the right value.
+    header = {
+        "description": "Float Atlas",
+        "date": "2026-06-26T00:00:00.000",
+        "atlasParamType": "Dict{String, Int64}",
+        "mapParamType": "Dict{String, Int64}",
+        "weightType": "Float64",
+    }
+    map_line = {
+        "name": "f1",
+        "weight": 2.5,
+        "data": {},
+        "districting": [{'["r1"]': 1}],
+    }
+    path = tmp_path / "fw.jsonl"
+    with open(path, "w") as f:
+        f.write('"comment line"\n')
+        f.write(json.dumps(header) + "\n")
+        f.write("{}\n")          # atlasParam
+        f.write(json.dumps(map_line) + "\n")
+    a = AtlasIO.openAtlas(str(path))
+    try:
+        m = AtlasIO.nextMap(a)
+        assert m.name == "f1"
+        assert m.weight == 2.5
+        assert isinstance(m.weight, float)
+    finally:
+        AtlasIO.closeAtlas(a)
 
 
 # ---------------------------------------------------------------------------
