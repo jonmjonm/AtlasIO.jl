@@ -12,7 +12,7 @@ export Map,
     newAtlas,
     openAtlas,
     nextMap,
-    readMapsParallel,
+    nextMaps,
     addMap,
     addMaps,
     close,
@@ -175,7 +175,7 @@ function nextMap(atlas::Atlas,ioIterator::Base.EachLine)::Map
 end
 
 """
-    readMapsParallel(atlas::Atlas; n=typemax(Int), batch=256) -> Vector{Map}
+    nextMaps(atlas::Atlas; n=typemax(Int), batch=256) -> Vector{Map}
 
 Read up to `n` maps from `atlas`, parsing them across all available threads.
 
@@ -193,7 +193,7 @@ Returned maps are in on-disk order — identical to a serial
 Start Julia with multiple threads (e.g. `julia -t auto`) to benefit; with a
 single thread it runs serially with negligible overhead.
 """
-function readMapsParallel(atlas::Atlas; n::Integer=typemax(Int), batch::Integer=256)
+function nextMaps(atlas::Atlas; n::Integer=typemax(Int), batch::Integer=256)
     batch < 1 && throw(ArgumentError("batch must be ≥ 1"))
     MT = Map{atlas.mapParamType}
     out = MT[]

@@ -289,7 +289,7 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
         @test String(take!(io)) == expected * "\n"
     end
 
-    @testset "readMapsParallel parity" begin
+    @testset "nextMaps parity" begin
         for (file, label) in [(atlasFileName, "uncompressed"), (atlasFileNameGz, "gzip")]
             @testset "$label" begin
                 # serial reference
@@ -300,7 +300,7 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
 
                 # parallel, small batch to force multiple chunks over 14 maps
                 io2 = smartOpen(file, "r"); atlas2 = openAtlas(io2)
-                par = readMapsParallel(atlas2; batch=4)
+                par = nextMaps(atlas2; batch=4)
                 @test eof(atlas2)
                 close(io2)
 
@@ -314,7 +314,7 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
         # `n` bound and composition with skipMap
         io = smartOpen(atlasFileName, "r"); atlas = openAtlas(io)
         skipMap(atlas)                       # drop map1
-        par = readMapsParallel(atlas; n=2, batch=1)
+        par = nextMaps(atlas; n=2, batch=1)
         @test length(par) == 2
         @test par[1].name == "map2"
         @test !eof(atlas)                    # n bound stopped before EOF
@@ -346,7 +346,7 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
         addMaps(io_w, maps)
         close(io_w)
         io_r = smartOpen(tmpfile, "r"); atlas = openAtlas(io_r)
-        back = readMapsParallel(atlas)
+        back = nextMaps(atlas)
         @test [m.name for m in back] == ["a", "b", "c"]
         @test back[2].districting == Districting(("DAVIDSON","12,14")=>2)
         close(io_r); rm(tmpfile)

@@ -1,7 +1,7 @@
 ##
 ## Multithreaded reading and writing of an Atlas.
 ##
-## readMapsParallel parses the maps across all available threads (the JSON parse
+## nextMaps parses the maps across all available threads (the JSON parse
 ## is ~97% of read time and is independent per map). addMaps serializes maps in
 ## parallel and writes them in order. Both produce results identical to the
 ## serial nextMap / addMap paths.
@@ -38,7 +38,7 @@ atlas = openAtlas(io)
 println("atlas date:", atlas.date)
 println("number of districts:", atlas.atlasParam["districts"])
 
-t = @timed maps = readMapsParallel(atlas; n = maxMap)   # Vector{Map}, in on-disk order
+t = @timed maps = nextMaps(atlas; n = maxMap)   # Vector{Map}, in on-disk order
 close(atlas)
 
 @printf("read %d maps in %.3f s (%.0f maps/s)\n", length(maps), t.time, length(maps) / t.time)
@@ -63,7 +63,7 @@ if outName !== nothing
     # Verify the round-trip: re-read the output and compare to what we wrote.
     ioCheck = smartOpen(outName, "r")
     atlasCheck = openAtlas(ioCheck)
-    back = readMapsParallel(atlasCheck)
+    back = nextMaps(atlasCheck)
     close(atlasCheck)
     ok = length(back) == length(maps) &&
          all(back[i].name == maps[i].name &&

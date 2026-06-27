@@ -13,7 +13,7 @@ julia read_atlas.jl ../ExampleAtlas/atlas_nc_multiscale.jsonl.gz 20
 
 ## `parallel_read_write.jl`
 
-Multithreaded read and write. `readMapsParallel` parses maps across all
+Multithreaded read and write. `nextMaps` parses maps across all
 available threads; `addMaps` serializes and writes a batch of maps in parallel.
 Both give results identical to the serial `nextMap` / `addMap` paths — same
 on-disk order, byte-identical output.

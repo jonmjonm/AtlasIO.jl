@@ -5,6 +5,8 @@
 
 This repository contains a number of tools to read in and manipulate Atlas files. The primary code is written in the Julia programming language, but it can be used in Python as well. The Python library can only read Atlas files, it cannot write them. The Julia library can read and write Atlas files.
 
+For a complete reference of the public functions and types exposed by both the Julia and Python libraries, see [**function_calls.md**](function_calls.md).
+
 ## Atlas files 
     
 Atlas files contain a collection of map assignments. The format is a specialization of the JSONL format. Each line in an Atlas file is a JSON object. The first three lines describe the particular Atlas. Starting with the fourth line, each line is a JSON object that describes a map assignment. More information can be found in the [**Atlas format**](atlas_format.md) file.  
@@ -41,6 +43,8 @@ LICENSE
     This file contains a description of the repository and how to use it.
 * atlas_format.md :
     This file contains a description of the Atlas file format. It describes the JSONL format and the different fields in the JSON objects.
+* [function_calls.md](function_calls.md) :
+    This file documents the public function calls and types of both the Julia and Python libraries (an API reference).
 * LICENSE :
     This file contains the license for the repository. The code is licensed under the MIT license.
 * src directory

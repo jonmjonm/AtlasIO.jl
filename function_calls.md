@@ -89,7 +89,7 @@ Reads the next map from an `EachLine` iterator over the stream.
 Parses a single already-read line `buff` into a `Map`, using the atlas's map
 parameter and weight types. Useful for custom/parallel read loops.
 
-#### `readMapsParallel(atlas::Atlas; n=typemax(Int), batch=256) -> Vector{Map}`
+#### `nextMaps(atlas::Atlas; n=typemax(Int), batch=256) -> Vector{Map}`
 Reads up to `n` maps, parsing them across all available threads. Lines are read
 serially in chunks of `batch` (with the next chunk prefetched on a separate
 task) and parsed in parallel. Returned maps are in on-disk order, identical to a
