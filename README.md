@@ -11,6 +11,8 @@ For a complete reference of the public functions and types exposed by both the J
     
 Atlas files contain a collection of map assignments. The format is a specialization of the JSONL format. Each line in an Atlas file is a JSON object. The first three lines describe the particular Atlas. Starting with the fourth line, each line is a JSON object that describes a map assignment. More information can be found in the [**Atlas format**](atlas_format.md) file.  
 
+The Atlas format is the format used by the [Quantifying Gerrymandering](https://duke.is/QGBlog) project's redistricting sampling software, including [**Cycle Walk**](https://duke.is/CycleWalk) and [**Metropolized Forest Recom**](https://duke.is/MFRecom), to save their ensembles of maps.
+
 ## Directory Structure of AtlasIO repository
 The directory structure of the AtlasIO repository is as follows:
 
@@ -85,4 +87,6 @@ LICENSE
     - [read_atlas.jl](JuliaExamples/read_atlas.jl) : a simple example that loops through the maps 
     
 ## Quantifying Gerrymandering project
-This repository is part of the Quantifying Gerrymandering project. The goal of this project is to develop tools to quantify gerrymandering and to provide a platform for researchers to share their work. The project is led by a team of researchers at Duke University, including Professor Jonathan Mattingly, Professor Greg Herschlag, and many others. More information about the project can be found on the [**Quantifying Gerrymandering**](https://sites.duke.edu/quantifyinggerrymandering/) website.
+This repository is part of the [Quantifying Gerrymandering](https://duke.is/QGBlog) project. The goal of this project is to develop tools to quantify gerrymandering and to provide a platform for researchers to share their work. The project is led by a team of researchers at Duke University, including Professor Jonathan Mattingly, Professor Greg Herschlag, and many others. More information about the project can be found on the [**Quantifying Gerrymandering**](https://duke.is/QGBlog) website and in the [**Quantifying Gerrymandering Documentation**](https://duke.is/QGDoc).
+
+The Quantifying Gerrymandering Project's redistricting sampling software uses the Atlas format to save its data. Both [**Cycle Walk**](https://duke.is/CycleWalk) and [**Metropolized Forest Recom**](https://duke.is/MFRecom) write their ensembles of map assignments in the [Atlas format](atlas_format.md).
