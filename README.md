@@ -17,15 +17,18 @@ The directory structure of the AtlasIO repository is as follows:
 ```
 README.md
 atlas_format.md
+function_calls.md
 LICENSE
 +-- src
 |       AtlasIO.jl
-+-- AtlasExamples
++-- ExampleAtlas
 |       atlas_nc_multiscale.jsonl.gz
 |       atlas_truncated_nc_multiscale.jsonl
+|       test.jsonl
 |       test.jsonl.gz
 +-- JuliaExamples
-        read_atlas.jl
+|       read_atlas.jl
+|       parallel_read_write.jl
 +-- PythonReader
 |       AtlasIO.py
 |       helper_functions.py
@@ -33,53 +36,53 @@ LICENSE
 |       example_atlas.py
 |       example_atlas_multilevel_loadMaps.py
 |       example_atlas_multilevel_precinctHistogram.py
-+-- Shapefiles_JSON
++-- Shapefile_JSON
 |       pct21_20votes_wMCD.json
 |       pct21_22votes.json
 |       pct21.zip    
 ```
 ## The files contained here are : 
-* README.md : 
+* [README.md](README.md) : 
     This file contains a description of the repository and how to use it.
-* atlas_format.md :
+* [atlas_format.md](atlas_format.md) :
     This file contains a description of the Atlas file format. It describes the JSONL format and the different fields in the JSON objects.
 * [function_calls.md](function_calls.md) :
     This file documents the public function calls and types of both the Julia and Python libraries (an API reference).
-* LICENSE :
+* [LICENSE](LICENSE) :
     This file contains the license for the repository. The code is licensed under the MIT license.
-* src directory
-    - AtlasIO.jl:
+* [src](src) directory
+    - [AtlasIO.jl](src/AtlasIO.jl):
         This is the main Atlas reader and writer module written in Julia. 
-* ExampleAtlas directory
-    - atlas_nc_multiscale.jsonl.gz :
+* [ExampleAtlas](ExampleAtlas) directory
+    - [atlas_nc_multiscale.jsonl.gz](ExampleAtlas/atlas_nc_multiscale.jsonl.gz) :
         This is a large collection of map assignments for testing. Notice that it is compressed. The library can read compressed or uncompressed files. These multi-scale assignments come from code which try to preserve the different levels.
-    - atlas_truncated_nc_multiscale.jsonl :
+    - [atlas_truncated_nc_multiscale.jsonl](ExampleAtlas/atlas_truncated_nc_multiscale.jsonl) :
         This is part of a real Atlas file for testing. It is uncompressed. 
-    - test.jsonl :
+    - [test.jsonl](ExampleAtlas/test.jsonl) :
         This is a small hand made collection of map assignments for testing. Notice that it is compressed. The library can read compressed or uncompressed files.
     - atlas_measureID.jsonl.gz :
         This is a large collection of map assignments for testing. Notice that it is compressed. The library can read compressed or uncompressed files. These multi-scale assignments come from code which try to preserve the different levels. This ensembles was used in a North Carolina 2021 court case. More info can be found in the [original repos](https://git.math.duke.edu/gitlab/gjh/ncanalysis2020/-/tree/main/ensembles/congressional).   
-* PythonReader Directory : This directory contains python code to read Atlas files and analyze them.
-    - Atlas.py :
+* [PythonReader](PythonReader) Directory : This directory contains python code to read Atlas files and analyze them.
+    - [AtlasIO.py](PythonReader/AtlasIO.py) :
         This is the main Atlas reader Library. It is a python version of the Julia library. It can read compressed or uncompressed files. It can not write an Atlas file presently. Use the Julia library to write an Atlas file.
-    - helper_functions.py :
+    - [helper_functions.py](PythonReader/helper_functions.py) :
         Some helper functions that are useful. Examples include summing elections, performing uniform swings and obtaining the node name to district mapping. See the file for full list and description.
 
-* Shapefiles_JSON Directory : 
+* [Shapefile_JSON](Shapefile_JSON) Directory : 
     This contains some election data and the adjacency data. Some files are in JSON files and others are in zipped shapefiles.
 
-* PythonExamples Directory : 
+* [PythonExamples](PythonExamples) Directory : 
     This directory contains some examples of how to use the Atlas reader library. 
-    - example_atlas.py :
+    - [example_atlas.py](PythonExamples/example_atlas.py) :
         This is a simple example of how to use the Atlas reader library. It reads in a file and prints out the number of maps and the number of precincts in each map.
-    - example_atlas_multilevel_loadMaps.py :
+    - [example_atlas_multilevel_loadMaps.py](PythonExamples/example_atlas_multilevel_loadMaps.py) :
         This is an example of how to load a multi-level Atlas file. It reads in a file and prints out the number of maps and the number of precincts in each map.
-    - example_atlas_multilevel_precinctHistogram.py :
+    - [example_atlas_multilevel_precinctHistogram.py](PythonExamples/example_atlas_multilevel_precinctHistogram.py) :
         This is an example of how to load a multi-level Atlas file and create a histogram of the precincts. It reads in a file and prints out the histogram.
 
-* JuliaExamples Directory :
+* [JuliaExamples](JuliaExamples) Directory :
     This directory contains some examples of how to use the Atlas reader library. 
-    - read_atlas.jl : a simple example that loops through the maps 
+    - [read_atlas.jl](JuliaExamples/read_atlas.jl) : a simple example that loops through the maps 
     
 ## Quantifying Gerrymandering project
 This repository is part of the Quantifying Gerrymandering project. The goal of this project is to develop tools to quantify gerrymandering and to provide a platform for researchers to share their work. The project is led by a team of researchers at Duke University, including Professor Jonathan Mattingly, Professor Greg Herschlag, and many others. More information about the project can be found on the [**Quantifying Gerrymandering**](https://sites.duke.edu/quantifyinggerrymandering/) website.
