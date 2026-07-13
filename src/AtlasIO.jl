@@ -45,6 +45,8 @@ struct Atlas{T}
     weightType::DataType
 end
 Atlas{T}(io::IO,atlasHeader::AtlasHeader,atlasParam::T) where T =Atlas(io,atlasHeader.description,atlasHeader.date,atlasParam,atlasHeader.mapParamType,atlasHeader.weightType)
+# Back-compat: pre-float_weights callers passed 5 positional args (no weightType); default it to Int64
+Atlas{T}(io::IO,description::String,date::String,atlasParam::T,mapParamType::DataType) where T =Atlas(io,description,date,atlasParam,mapParamType,Int64)
 
 Districting=Dict{Tuple{Vararg{String}},Int64} #Dict{String,Int64}
 
