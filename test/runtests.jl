@@ -1,5 +1,6 @@
 using Test
 using AtlasIO
+using CodecZlib: GzipDecompressor   # for verifying the parallel-gzip writer's output
 
 const atlasFileName   = joinpath(@__DIR__, "test.jsonl")
 const atlasFileNameGz = joinpath(@__DIR__, "test.jsonl.gz")
@@ -421,6 +422,65 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
         @test h.weightType == "Float64"
         hdef = AtlasHeader("G", "2024-01-01T00:00:00", Dict{String,Any}, Dict{String,Any})
         @test hdef.weightType == "Int64"          # default when unspecified
+    end
+
+    @testset "parallel byte-targeted gzip output" begin
+        @testset "isGzipOutput" begin
+            @test isGzipOutput("a.jsonl.gz")
+            @test !isGzipOutput("a.jsonl")
+            @test !isGzipOutput("a.jsonl.bz2")   # falls back to the serial stream
+        end
+
+        @testset "groupByBytes" begin
+            @test groupByBytes([4, 4, 4, 4], 8) == [1:2, 3:4]     # exact fit
+            @test groupByBytes([3, 3, 3, 3, 3], 8) == [1:3, 4:5]  # closes at >= target
+            @test groupByBytes([100, 1, 1], 8) == [1:1, 2:3]      # oversized record alone
+            @test groupByBytes([1, 1, 1], 100) == [1:3]           # target > everything
+            @test groupByBytes(Int[], 8) == UnitRange{Int}[]
+            for sizes in ([5, 1, 9, 2, 7, 3], fill(1, 37))        # covers every index once, in order
+                @test reduce(vcat, collect.(groupByBytes(sizes, 8))) == collect(1:length(sizes))
+            end
+        end
+
+        @testset "gzipMember round-trip + concatenation" begin
+            a = Vector{UInt8}("hello world\n" ^ 100)
+            b = Vector{UInt8}("second chunk\n" ^ 100)
+            @test transcode(GzipDecompressor, gzipMember(a)) == a
+            @test transcode(GzipDecompressor, vcat(gzipMember(a), gzipMember(b))) == vcat(a, b)
+        end
+
+        @testset "writeGzipMembers! -> valid multi-member gzip, in order" begin
+            recs = [Vector{UInt8}("record $i line\n") for i in 1:50]
+            io = IOBuffer()
+            writeGzipMembers!(io, recs, 4; target = 8)   # tiny target -> many members
+            gz = take!(io)
+            @test transcode(GzipDecompressor, gz) == reduce(vcat, recs)     # order preserved
+            @test count(i -> gz[i] == 0x1f && gz[i+1] == 0x8b, 1:(length(gz)-1)) >= 2
+        end
+
+        @testset "AtlasOutput: .gz round-trips, plain is raw" begin
+            dir = mktempdir()
+            hdr = Vector{UInt8}("line1\nline2\nline3\n")
+            recs = [Vector{UInt8}("map $i data\n") for i in 1:20]
+            content = vcat(hdr, reduce(vcat, recs))
+
+            pgz = joinpath(dir, "t.jsonl.gz")           # gzip path -> parallel members
+            out = openAtlasOutput(pgz, hdr, 4)
+            writeMaps!(out, recs); close(out)
+            @test success(`gzip -t $pgz`)
+            @test transcode(GzipDecompressor, read(pgz)) == content
+            @test count(let b = read(pgz); i -> b[i] == 0x1f && b[i+1] == 0x8b end,
+                        1:(filesize(pgz)-1)) >= 2
+
+            pplain = joinpath(dir, "t.jsonl")           # plain path -> written raw
+            out = openAtlasOutput(pplain, hdr, 4)
+            writeMaps!(out, recs); close(out)
+            @test read(pplain) == content
+
+            # header round-trips through atlasHeaderBytes on both encodings
+            @test atlasHeaderBytes(pgz) == hdr
+            @test atlasHeaderBytes(pplain) == hdr
+        end
     end
 
 end

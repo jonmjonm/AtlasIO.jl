@@ -20,7 +20,16 @@ export Map,
     skipMap,
     eof,
     copyAtlasHeader,
-    parseBufferToMap
+    parseBufferToMap,
+    AtlasOutput,
+    openAtlasOutput,
+    writeMaps!,
+    writeGzipMembers!,
+    groupByBytes,
+    gzipMember,
+    isGzipOutput,
+    atlasHeaderBytes,
+    GZIP_MEMBER_TARGET
 
 struct AtlasHeader
     description::String
@@ -369,6 +378,188 @@ function copyAtlasHeader(sourceFilename::String, outFilename::String)
     end
     close(ioSource)
     close(ioOut)
+end
+
+# ---------------------------------------------------------------------------
+# Parallel byte-targeted gzip output
+# ---------------------------------------------------------------------------
+#
+# Writing a `.gz` atlas serially makes gzip's deflate() the dominant NON-parallel
+# cost: `addMaps` already serializes maps in parallel, but the compression that
+# follows runs single-threaded, capping thread scaling. The gzip format is a series
+# of independent "members" that concatenate into one valid `.gz` (RFC 1952) -- read
+# transparently by `gunzip`/`zcat` and by `openAtlas` here -- so the compression can
+# be parallelized: group consecutive serialized maps until their combined size
+# reaches a byte target, gzip each group into one member across worker tasks, and
+# write the member bytes serially in order (the serial path is then just raw I/O).
+#
+# Grouping by BYTES (not map count) keeps every member comfortably above deflate's
+# 32 KB history window, so the multi-member ratio penalty stays within ~0.1% of a
+# single stream for any atlas -- large-map or small-map. The output is NOT
+# byte-identical to a single-stream `.gz` (it is a different, equally valid encoding
+# of the same content).
+#
+# `AtlasOutput` is the writer used by tools that already produce serialized map
+# bytes (e.g. AtlasUtilities' `add`/`relabel`): `openAtlasOutput(path, header, ...)`
+# then repeated `writeMaps!(out, bytes)` then `close(out)`. Only `.gz` targets take
+# the parallel-member path; plain output is written directly and `.bz2` streams
+# through `smartOpen`.
+
+"Target uncompressed bytes per gzip member (256 KB -- 8x deflate's 32 KB window)."
+const GZIP_MEMBER_TARGET = 1 << 18
+
+"Compress `bytes` into one standalone gzip member (concatenable into a multi-member `.gz`)."
+gzipMember(bytes::Vector{UInt8}) = transcode(GzipCompressor, bytes)
+
+"True if writing `path` should produce gzip output (drives the parallel-member path);
+`.bz2` is excluded and falls back to the serial stream."
+isGzipOutput(path::AbstractString) = endswith(path, ".gz")
+
+"""
+    groupByBytes(sizes, target) -> Vector{UnitRange{Int}}
+
+Partition `1:length(sizes)` into consecutive ranges whose summed `sizes` each reach
+at least `target` bytes (the final range may be smaller). Each range becomes one
+gzip member, so grouping by bytes keeps members above deflate's history window.
+"""
+function groupByBytes(sizes::Vector{Int}, target::Int)
+    ranges = UnitRange{Int}[]
+    n = length(sizes)
+    i = 1
+    while i <= n
+        acc = 0
+        j = i
+        while j <= n && acc < target
+            acc += sizes[j]
+            j += 1
+        end
+        push!(ranges, i:(j - 1))
+        i = j
+    end
+    return ranges
+end
+
+"Split `1:n` into at most `k` contiguous ranges (one per task)."
+function _chunkranges(n::Int, k::Int)
+    k = clamp(k, 1, max(n, 1))
+    base, extra = divrem(n, k)
+    ranges = UnitRange{Int}[]
+    start = 1
+    for c in 1:k
+        len = base + (c <= extra ? 1 : 0)
+        len == 0 && continue
+        push!(ranges, start:(start + len - 1))
+        start += len
+    end
+    return ranges
+end
+
+"""
+    writeGzipMembers!(out, bytes, cores = Threads.nthreads(); target = GZIP_MEMBER_TARGET)
+
+Write the in-order serialized records `bytes` to `out` as byte-targeted gzip members:
+group consecutive records into ~`target`-byte groups (`groupByBytes`), gzip each
+group into one member in parallel across `cores` tasks, then write the members to
+`out` serially in record order (raw bytes -- the only serial work is I/O). The
+concatenated members form one valid `.gz`. Returns nothing.
+"""
+function writeGzipMembers!(out::IO, bytes::Vector{Vector{UInt8}},
+                           cores::Int = Threads.nthreads();
+                           target::Int = GZIP_MEMBER_TARGET)
+    isempty(bytes) && return nothing
+    sizes = Int[length(b) for b in bytes]
+    ranges = groupByBytes(sizes, target)
+    members = Vector{Vector{UInt8}}(undef, length(ranges))
+    @sync for cr in _chunkranges(length(ranges), cores)
+        Threads.@spawn for gi in cr
+            r = ranges[gi]
+            buf = Vector{UInt8}(undef, sum(@view sizes[r]))
+            off = 0
+            for i in r
+                b = bytes[i]
+                copyto!(buf, off + 1, b, 1, length(b))
+                off += length(b)
+            end
+            members[gi] = gzipMember(buf)
+        end
+    end
+    for gi in eachindex(members)
+        write(out, members[gi])
+    end
+    return nothing
+end
+
+"""
+    AtlasOutput
+
+Output sink for an atlas's serialized map bytes that hides how the target is
+written. For a `.gz` path it emits byte-targeted gzip members compressed in parallel
+(`writeGzipMembers!`); for any other path it writes through a `smartOpen` stream
+(plain, or serial `.bz2`). Build with [`openAtlasOutput`](@ref), feed batches of
+in-order serialized maps with [`writeMaps!`](@ref), and `close` it when done.
+"""
+struct AtlasOutput
+    io::IO
+    gzip::Bool
+    cores::Int
+end
+
+"""
+    openAtlasOutput(path, headerBytes, cores = Threads.nthreads()) -> AtlasOutput
+
+Open `path` for writing and emit the atlas `headerBytes` (its three header lines).
+For `.gz` output the header is written as its own gzip member and the file is opened
+raw so subsequent map members can be appended; otherwise the header is written
+through a `smartOpen` stream (plain or `.bz2`). `cores` is the parallel-compression
+worker count for the map body.
+"""
+function openAtlasOutput(path::AbstractString, headerBytes::Vector{UInt8},
+                         cores::Int = Threads.nthreads())
+    if isGzipOutput(path)
+        io = open(String(path), "w")
+        write(io, gzipMember(headerBytes))
+        return AtlasOutput(io, true, cores)
+    else
+        io = smartOpen(String(path), "w")   # plain IOStream or serial .bz2 stream
+        write(io, headerBytes)
+        return AtlasOutput(io, false, cores)
+    end
+end
+
+"""
+    writeMaps!(out::AtlasOutput, bytes)
+
+Append the in-order serialized map byte-vectors `bytes` to `out`: as byte-targeted
+parallel gzip members for a `.gz` target, or written straight through the stream
+otherwise.
+"""
+function writeMaps!(out::AtlasOutput, bytes::Vector{Vector{UInt8}})
+    if out.gzip
+        writeGzipMembers!(out.io, bytes, out.cores)
+    else
+        for b in bytes
+            write(out.io, b)
+        end
+    end
+    return nothing
+end
+
+Base.close(out::AtlasOutput) = close(out.io)
+
+"""
+    atlasHeaderBytes(path) -> Vector{UInt8}
+
+Read an atlas's three header lines from `path` as raw bytes (with trailing
+newlines), for re-emitting through an [`AtlasOutput`](@ref).
+"""
+function atlasHeaderBytes(path::AbstractString)
+    src = smartOpen(String(path), "r")
+    buf = IOBuffer()
+    for _ in 1:3
+        write(buf, readline(src), "\n")
+    end
+    close(src)
+    return take!(buf)
 end
 
 end # module AtlasIO
