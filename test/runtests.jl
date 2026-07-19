@@ -530,4 +530,61 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
         end
     end
 
+    @testset "getFileExtension with no dot" begin
+        ext, base = AtlasIO.getFileExtension("noext")
+        @test ext == ""
+        @test base == "noext"
+    end
+
+    @testset "smartOpen: real errors aren't masked as missing-file" begin
+        # A permission-denied file gives EACCES, not ENOENT, so smartOpen must
+        # propagate it rather than silently retrying with an alternate extension.
+        dir = mktempdir()
+        path = joinpath(dir, "secret.jsonl")
+        write(path, "x")
+        chmod(path, 0o000)
+        try
+            @test_throws SystemError smartOpen(path, "r")
+        finally
+            chmod(path, 0o644)   # restore so mktempdir's cleanup can remove it
+        end
+    end
+
+    @testset "nextMap/skipMap past EOF raise EOFError" begin
+        io = smartOpen(atlasFileName, "r")
+        atlas = openAtlas(io)
+        while !eof(atlas); nextMap(atlas); end
+        @test_throws EOFError nextMap(atlas)
+        close(io)
+
+        io2 = smartOpen(atlasFileName, "r")
+        atlas2 = openAtlas(io2)
+        @test_throws EOFError skipMap(atlas2; numSkip=TOTAL_MAPS + 1)
+        close(io2)
+
+        io3 = smartOpen(atlasFileName, "r")
+        atlas3 = openAtlas(io3)
+        iter = eachline(atlas3.io)
+        for _ in 1:TOTAL_MAPS; nextMap(atlas3, iter); end
+        @test_throws EOFError nextMap(atlas3, iter)
+        close(io3)
+    end
+
+    @testset "nextMap/parseBufferToMap raise AtlasFormatError on malformed map line" begin
+        io = smartOpen(atlasFileName, "r")
+        atlas = openAtlas(io)
+        @test_throws AtlasFormatError parseBufferToMap(atlas, "not json")
+        close(io)
+
+        dir = mktempdir()
+        badMap = joinpath(dir, "badmap.jsonl")
+        write(badMap, "banner\n" *
+              """{"description":"d","date":"t","atlasParamType":"Dict","mapParamType":"Dict"}""" *
+              "\n{}\nnot a map line\n")
+        io2 = smartOpen(badMap, "r")
+        atlas2 = openAtlas(io2)
+        @test_throws AtlasFormatError nextMap(atlas2)
+        close(io2)
+    end
+
 end

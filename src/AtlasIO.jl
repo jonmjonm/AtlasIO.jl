@@ -146,10 +146,23 @@ struct AtlasFormatError <: Exception
 end
 Base.showerror(io::IO, e::AtlasFormatError) = print(io, "AtlasFormatError: ", e.msg)
 
-function openAtlas(io::IO)::Atlas
-    readline(io) #throw away initial line (the human-readable format banner)
+"Read a line from `io`, wrapping any stream-level failure (e.g. a truncated or
+CRC-corrupt `.gz`/`.bz2` file) as an `AtlasFormatError` naming `what`, so callers get
+a consistent, readable message instead of a raw decompressor exception."
+function _readlineOrFormatError(io::IO, what::String)
+    try
+        return readline(io)
+    catch e
+        throw(AtlasFormatError("not a valid Atlas file: failed to read $what " *
+                               "(the underlying stream raised an error, possibly a " *
+                               "truncated or corrupt compressed file) ($(sprint(showerror, e)))."))
+    end
+end
 
-    headerLine = readline(io)
+function openAtlas(io::IO)::Atlas
+    _readlineOrFormatError(io, "the initial banner line (line 1)") #throw away initial line (the human-readable format banner)
+
+    headerLine = _readlineOrFormatError(io, "the header line (line 2)")
     local atlasHeaderDict
     try
         atlasHeaderDict = JSON3.read(headerLine, Dict{String,String})
@@ -178,7 +191,7 @@ function openAtlas(io::IO)::Atlas
     map_ParamType=Dict{String,Any}#eval(Meta.parse(atlasHeader.mapParamType))
     weight_type=types[atlasHeader.weightType] #ensure weight type is defined
 
-    paramLine = readline(io)
+    paramLine = _readlineOrFormatError(io, "the atlas-parameters line (line 3)")
     local atlasParam
     try
         atlasParam = JSON3.read(paramLine, atlas_ParamType)
@@ -192,20 +205,40 @@ function openAtlas(io::IO)::Atlas
     return atlas
 end
     
+"Parse `buff` as a `Map` line, wrapping any JSON/decoding failure as an
+`AtlasFormatError` (a malformed line or a corrupt mid-file stream) instead of
+letting a raw JSON3 error escape."
+function _parseMapLine(atlas::Atlas, buff::String)::Map
+    try
+        return JSON3.read(buff,Map{atlas.mapParamType,atlas.weightType})
+    catch e
+        throw(AtlasFormatError("not a valid Atlas map line: failed to parse as JSON " *
+                               "($(sprint(showerror, e)))."))
+    end
+end
+
 function nextMap(atlas::Atlas)::Map
-    buff=readline(atlas.io)
-    map=JSON3.read(buff,Map{atlas.mapParamType,atlas.weightType})
-    return map
+    eof(atlas.io) && throw(EOFError())
+    buff = try
+        readline(atlas.io)
+    catch e
+        throw(AtlasFormatError("failed to read a map line: the underlying stream raised " *
+                               "an error (possibly a truncated or corrupt compressed file) " *
+                               "($(sprint(showerror, e)))."))
+    end
+    return _parseMapLine(atlas, buff)
 end
 
 function parseBufferToMap(atlas::Atlas,buff::String)::Map
-    map=JSON3.read(buff,Map{atlas.mapParamType,atlas.weightType})
-    return map
+    return _parseMapLine(atlas, buff)
 end
 function nextMap(atlas::Atlas,ioIterator::Base.EachLine)::Map
-    buff=first(ioIterator)
-    map=JSON3.read(buff,Map{atlas.mapParamType,atlas.weightType})
-    return map
+    buff = try
+        first(ioIterator)
+    catch e
+        e isa ArgumentError ? throw(EOFError()) : rethrow()
+    end
+    return _parseMapLine(atlas, buff)
 end
 
 """
@@ -308,16 +341,17 @@ Returns *nothing* if unsure what to do.
 """
 function smartOpen(fileName::String, io_mode::String)::Union{IO,Nothing}
     ext,base=getFileExtension(fileName)
- 
+
     if ((io_mode=="w") |(io_mode=="a"))
-        
+
         oo= try open(fileName,io_mode) #try to open filename given
         catch err
+            _isMissingFileError(err) || rethrow()
             @info( string("Error opening file. Trying alternative extensions for ",fileName));
-            if ((io_mode=="a") & ((ext==".gz") | (ext==".bz2")))
+            if ((ext==".gz") | (ext==".bz2"))
                 fileName=base;
                 ext,base=getFileExtension(base);
-                open(base,io_mode) #if first open fails and was compressed, try not compressed
+                open(fileName,io_mode) #if first open fails and was compressed, try not compressed
             else
                 base=string(base,ext);
                 ext=".gz";
@@ -333,13 +367,14 @@ function smartOpen(fileName::String, io_mode::String)::Union{IO,Nothing}
             # print("w-gZ")
             return GzipCompressorStream(oo)
         end
-        return oo  
+        return oo
     end
-    
-    if io_mode=="r" 
-        
+
+    if io_mode=="r"
+
             oo= try open(fileName,io_mode) #try to open filename given
              catch err
+                _isMissingFileError(err) || rethrow()
                 @info( string("Error opening file. Trying alternative extensions for ",fileName));
                 if ((ext==".gz") | (ext==".bz2"))
                     fileName=base;
@@ -380,14 +415,23 @@ end
 function skipMap(atlas::Atlas;numSkip=1)
     count=0
     while (count < numSkip)
+        eof(atlas.io) && throw(EOFError())
         readline(atlas.io)
         count+=1
     end
 end
 
 
+"True if `err` indicates the target path simply doesn't exist (ENOENT) -- the only
+case where retrying `smartOpen` with an alternate compression extension makes sense.
+Any other error (permission denied, missing directory, disk full, ...) is a real
+failure and should propagate as-is rather than being masked by a second, unrelated
+open attempt."
+_isMissingFileError(err) = err isa SystemError && err.errnum == Base.Libc.ENOENT
+
 function getFileExtension(filename::String)
     i=findlast(isequal('.'),filename)
+    i === nothing && return "", filename   # no '.' in filename -> no extension
     return filename[i:end],filename[1:i-1]
 end
 
