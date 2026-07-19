@@ -483,4 +483,51 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
         end
     end
 
+    @testset "openAtlas: clear AtlasFormatError on non-Atlas / malformed input" begin
+        dir = mktempdir()
+
+        # A single-line JSON document (e.g. a dual-graph file) -- the "throw away
+        # initial line" read consumes the whole thing, so the header line is empty.
+        notAnAtlas = joinpath(dir, "graph.json")
+        write(notAnAtlas, """{"directed":false,"nodes":[{"id":0}]}""")
+        io = smartOpen(notAnAtlas, "r")
+        @test_throws AtlasFormatError openAtlas(io)
+        close(io)
+
+        # Header line parses as JSON but is missing a required key.
+        missingKey = joinpath(dir, "missingkey.jsonl")
+        write(missingKey, "banner\n" * """{"description":"d","date":"t","atlasParamType":"Dict"}""" * "\n{}\n")
+        io2 = smartOpen(missingKey, "r")
+        @test_throws AtlasFormatError openAtlas(io2)
+        close(io2)
+
+        # Header line names an unsupported weightType.
+        badWeight = joinpath(dir, "badweight.jsonl")
+        write(badWeight, "banner\n" *
+              """{"description":"d","date":"t","atlasParamType":"Dict","mapParamType":"Dict","weightType":"BigFloat"}""" *
+              "\n{}\n")
+        io3 = smartOpen(badWeight, "r")
+        @test_throws AtlasFormatError openAtlas(io3)
+        close(io3)
+
+        # Third line (atlas parameters) isn't valid JSON.
+        badParams = joinpath(dir, "badparams.jsonl")
+        write(badParams, "banner\n" *
+              """{"description":"d","date":"t","atlasParamType":"Dict","mapParamType":"Dict"}""" *
+              "\nnot json\n")
+        io4 = smartOpen(badParams, "r")
+        @test_throws AtlasFormatError openAtlas(io4)
+        close(io4)
+
+        # AtlasFormatError <: Exception and carries a readable message.
+        try
+            io5 = smartOpen(notAnAtlas, "r")
+            openAtlas(io5)
+        catch e
+            @test e isa AtlasFormatError
+            @test occursin("not a valid Atlas file", e.msg)
+            @test occursin("not a valid Atlas file", sprint(showerror, e))
+        end
+    end
+
 end

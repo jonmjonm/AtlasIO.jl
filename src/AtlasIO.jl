@@ -4,9 +4,10 @@ using StructTypes, JSON3, Dates
 using TranscodingStreams, CodecBzip2, CodecZlib
 
 
-export Map, 
+export Map,
     smartOpen,
     AtlasHeader,
+    AtlasFormatError,
     Atlas,
     Districting,
     newAtlas,
@@ -132,40 +133,62 @@ end
 
 const types=Dict{String,DataType}("Int64"=>Int64,"Float64"=>Float64)
 
+"""
+    AtlasFormatError(msg) <: Exception
+
+Raised by [`openAtlas`](@ref) when the input stream's first three lines don't
+parse as a valid Atlas header -- e.g. the file is some other JSON document
+(a dual-graph file, say) rather than an Atlas, or it's truncated. Carries a
+plain-text `msg` describing what went wrong.
+"""
+struct AtlasFormatError <: Exception
+    msg::String
+end
+Base.showerror(io::IO, e::AtlasFormatError) = print(io, "AtlasFormatError: ", e.msg)
+
 function openAtlas(io::IO)::Atlas
-    #print("Entering openAtlas\n")
-    
-    buff=readline(io) #throw away initial line
-    
-    buff=readline(io)
-    #@show buff
-    atlasHeaderDict=JSON3.read(buff,Dict{String,String})
-    #@show atlasHeaderDict
-    #@show typeof(atlasHeaderDict)
+    readline(io) #throw away initial line (the human-readable format banner)
+
+    headerLine = readline(io)
+    local atlasHeaderDict
+    try
+        atlasHeaderDict = JSON3.read(headerLine, Dict{String,String})
+    catch e
+        throw(AtlasFormatError("not a valid Atlas file: the header line (line 2) " *
+                               "did not parse as JSON ($(sprint(showerror, e)))."))
+    end
+
+    for k in ("description", "date", "atlasParamType", "mapParamType")
+        haskey(atlasHeaderDict, k) ||
+            throw(AtlasFormatError("not a valid Atlas file: the header line (line 2) " *
+                                   "is missing \"$k\"."))
+    end
+
     if !haskey(atlasHeaderDict,"weightType")
         #missing weightType, adding default Int64
         atlasHeaderDict["weightType"]="Int64"
     end
-    #@show atlasHeaderDict
+    haskey(types, atlasHeaderDict["weightType"]) ||
+        throw(AtlasFormatError("not a valid Atlas file: unknown weightType " *
+                               "\"$(atlasHeaderDict["weightType"])\" (expected " *
+                               "\"Int64\" or \"Float64\")."))
 
     atlasHeader=AtlasHeader(atlasHeaderDict["description"],atlasHeaderDict["date"],atlasHeaderDict["atlasParamType"],atlasHeaderDict["mapParamType"],atlasHeaderDict["weightType"])
-    #atlasHeader=JSON3.read(buff,AtlasHeader)
-    #@show atlasHeader
-    #print("Convert Params in openAtlas\n")
     atlas_ParamType=Dict{String,Any}#eval(Meta.parse(atlasHeader.atlasParamType))
     map_ParamType=Dict{String,Any}#eval(Meta.parse(atlasHeader.mapParamType))
-    #@show map_ParamType
-    #@show atlas_ParamType
     weight_type=types[atlasHeader.weightType] #ensure weight type is defined
-    
-    #print("Reading atlasParam in openAtlas\n")
-    buff=readline(io)
-    atlasParam=JSON3.read(buff,atlas_ParamType)
-    #print("atlasParam :",atlasParam," : ",typeof(atlasParam),"\n")
-    
-    #print("making atlas in openAtlas\n")
+
+    paramLine = readline(io)
+    local atlasParam
+    try
+        atlasParam = JSON3.read(paramLine, atlas_ParamType)
+    catch e
+        throw(AtlasFormatError("not a valid Atlas file: the atlas-parameters line " *
+                               "(line 3) did not parse as JSON ($(sprint(showerror, e)))."))
+    end
+
     atlas=Atlas{map_ParamType}(io,atlasHeader.description,atlasHeader.date,atlasParam,map_ParamType, weight_type)
-    
+
     return atlas
 end
     
