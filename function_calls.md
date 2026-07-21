@@ -69,6 +69,12 @@ the filename extension (`.gz` → gzip, `.bz2` → bzip2, otherwise uncompressed
 falls back to the alternative extension (compressed ↔ uncompressed). Returns
 `nothing` if it cannot determine what to do.
 
+`fileName` may also be an `http://` or `https://` URL, in which case the
+resource is downloaded to a temporary file and opened for reading; compression
+is sniffed from the URL's path (ignoring any query string/fragment), and the
+same alternate-extension fallback applies on a 404. Only `io_mode="r"` is
+supported for URLs -- writing raises `ArgumentError`.
+
 #### `close(atlas::Atlas)`
 Closes the underlying `IO` stream of the atlas. (`Base.close` method.)
 
@@ -135,6 +141,14 @@ atlas = openAtlas(io)
 while !eof(atlas)
     m = nextMap(atlas)
 end
+close(atlas)
+```
+
+**Read from a URL:**
+```julia
+io = smartOpen("https://example.com/atlas.jsonl.gz", "r")
+atlas = openAtlas(io)
+...
 close(atlas)
 ```
 

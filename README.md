@@ -11,6 +11,8 @@ For a complete reference of the public functions and types exposed by both the J
     
 Atlas files contain a collection of map assignments. The format is a specialization of the JSONL format. Each line in an Atlas file is a JSON object. The first three lines describe the particular Atlas. Starting with the fourth line, each line is a JSON object that describes a map assignment. More information can be found in the [**Atlas format**](atlas_format.md) file.  
 
+The Julia library's `smartOpen` can open a local file (compressed or not) or an `http://`/`https://` URL directly for reading -- see [**function_calls.md**](function_calls.md) for details.
+
 The Atlas format is the format used by the [Quantifying Gerrymandering](https://duke.is/QGBlog) project's redistricting sampling software, including [**Cycle Walk**](https://duke.is/CycleWalk) and [**Metropolized Forest Recom**](https://duke.is/MFRecom), to save their ensembles of maps.
 
 ## Directory Structure of AtlasIO repository

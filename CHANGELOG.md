@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.5]
+
+- `smartOpen` can now read directly from `http://`/`https://` URLs, not just
+  local file paths. The resource is downloaded to a temporary file, its
+  compression is sniffed from the URL's path (`.gz`, `.bz2`, or none), and
+  the same alternate-extension fallback used for local files (compressed ↔
+  uncompressed) applies on a 404. Only reading (`io_mode="r"`) is supported
+  for URLs; writing raises `ArgumentError`.
+
 ## [0.1.4]
 
 - Improve IO error handling throughout the read path:
