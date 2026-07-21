@@ -3,11 +3,18 @@
 ## [0.1.5]
 
 - `smartOpen` can now read directly from `http://`/`https://` URLs, not just
-  local file paths. The resource is downloaded to a temporary file, its
-  compression is sniffed from the URL's path (`.gz`, `.bz2`, or none), and
-  the same alternate-extension fallback used for local files (compressed ↔
-  uncompressed) applies on a 404. Only reading (`io_mode="r"`) is supported
-  for URLs; writing raises `ArgumentError`.
+  local file paths. Compression is sniffed from the URL's path (`.gz`,
+  `.bz2`, or none), and the same alternate-extension fallback used for local
+  files (compressed ↔ uncompressed) applies when a URL 404s. Only reading
+  (`io_mode="r"`) is supported for URLs; writing raises `ArgumentError`.
+  - By default the URL is **streamed**: a background task feeds a
+    `Base.BufferStream` as bytes arrive, so reading/decompression can start
+    immediately without writing the whole file to disk. A cheap `HEAD`
+    request checks existence first, which drives the alternate-extension
+    fallback.
+  - Pass `download=true` to instead download the whole resource to a
+    temporary file first (the original behavior), with the fallback driven
+    by catching a real 404 from the transfer.
 
 ## [0.1.4]
 

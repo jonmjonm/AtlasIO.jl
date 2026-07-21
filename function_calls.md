@@ -62,18 +62,26 @@ Map{T,W}(x::Dict{String,Any})                 # build from a parsed JSON dict
 
 ### Opening / Closing Streams
 
-#### `smartOpen(fileName::String, io_mode::String)::Union{IO,Nothing}`
+#### `smartOpen(fileName::String, io_mode::String; download::Bool=false)::Union{IO,Nothing}`
 Opens an `IO` stream, transparently wrapping it in a compression pipe based on
 the filename extension (`.gz` → gzip, `.bz2` → bzip2, otherwise uncompressed).
 `io_mode` is `"r"`, `"w"`, or `"a"`. If the requested file does not exist it
 falls back to the alternative extension (compressed ↔ uncompressed). Returns
 `nothing` if it cannot determine what to do.
 
-`fileName` may also be an `http://` or `https://` URL, in which case the
-resource is downloaded to a temporary file and opened for reading; compression
-is sniffed from the URL's path (ignoring any query string/fragment), and the
-same alternate-extension fallback applies on a 404. Only `io_mode="r"` is
-supported for URLs -- writing raises `ArgumentError`.
+`fileName` may also be an `http://` or `https://` URL, in which case only
+`io_mode="r"` is supported (writing raises `ArgumentError`). Compression is
+sniffed from the URL's path, ignoring any query string/fragment.
+
+- By default (`download=false`), the URL is **streamed**: a background task
+  feeds a `Base.BufferStream` as bytes arrive over the network, so reading
+  (and decompression) can start immediately without ever writing the whole
+  file to disk or holding it fully in memory. Existence is checked with a
+  cheap `HEAD` request first, so the compressed ↔ uncompressed
+  alternate-extension fallback still works the same as for local files.
+- With `download=true`, the whole resource is downloaded to a temporary file
+  first (as in earlier versions), then opened for reading. The fallback is
+  driven by catching a real 404 from the transfer itself.
 
 #### `close(atlas::Atlas)`
 Closes the underlying `IO` stream of the atlas. (`Base.close` method.)
@@ -144,9 +152,17 @@ end
 close(atlas)
 ```
 
-**Read from a URL:**
+**Read from a URL (streamed, no full download):**
 ```julia
 io = smartOpen("https://example.com/atlas.jsonl.gz", "r")
+atlas = openAtlas(io)
+...
+close(atlas)
+```
+
+**Read from a URL (download to a temp file first):**
+```julia
+io = smartOpen("https://example.com/atlas.jsonl.gz", "r"; download=true)
 atlas = openAtlas(io)
 ...
 close(atlas)

@@ -340,12 +340,14 @@ if the filename extension suggests it. Currently supports .gz and .bz2.
 Defaults to regular uncompressed writing/reading if not one of these extensions.
 Returns *nothing* if unsure what to do.
 
-`fileName` may also be an `http://` or `https://` URL, in which case the
-resource is downloaded to a temporary file and opened for reading (only
-`io_mode=="r"` is supported for URLs).
+`fileName` may also be an `http://` or `https://` URL, in which case only
+`io_mode=="r"` is supported. By default the URL is streamed and decompressed
+on the fly, without ever writing the whole file to disk. Pass `download=true`
+to instead download the whole resource to a temporary file first (as earlier
+versions did).
 """
-function smartOpen(fileName::String, io_mode::String)::Union{IO,Nothing}
-    _isURL(fileName) && return _smartOpenURL(fileName, io_mode)
+function smartOpen(fileName::String, io_mode::String; download::Bool=false)::Union{IO,Nothing}
+    _isURL(fileName) && return _smartOpenURL(fileName, io_mode; download=download)
 
     ext,base=getFileExtension(fileName)
 
@@ -443,6 +445,19 @@ the only case where retrying `smartOpen` with an alternate compression extension
 makes sense for a URL."
 _isMissingURLError(err) = err isa Downloads.RequestError && err.response.status == 404
 
+"HEAD-requests `url`, returning its `Response` (or `nothing` on a connection-
+level failure, which is left for the real GET in `_streamURL` to surface)."
+function _headResponse(url::String)
+    try
+        return Downloads.request(url; method="HEAD", throw=false)
+    catch
+        return nothing
+    end
+end
+
+"True if `resp` (from `_headResponse`) confirms the URL doesn't exist (HTTP 404)."
+_isMissingResponse(resp) = resp !== nothing && resp.status == 404
+
 "Strip a URL's query string and fragment so `getFileExtension` sees only the path."
 function _urlExtension(url::AbstractString)
     p = first(split(url, '#'; limit=2))
@@ -460,31 +475,112 @@ function _alternateURL(url::String, ext::String)
     end
 end
 
-function _smartOpenURL(url::String, io_mode::String)::Union{IO,Nothing}
+function _smartOpenURL(url::String, io_mode::String; download::Bool=false)::Union{IO,Nothing}
     io_mode == "r" || throw(ArgumentError(
         "smartOpen only supports io_mode=\"r\" for URLs (got \"$io_mode\") for $url"))
 
     ext = _urlExtension(url)
 
-    tmpPath, ext = try
-        (Downloads.download(url, tempname()), ext)
-    catch err
-        _isMissingURLError(err) || rethrow()
-        @info(string("Error fetching URL. Trying alternative extensions for ", url))
-        altURL, altExt = _alternateURL(url, ext)
-        (Downloads.download(altURL, tempname()), altExt)
+    stream, ext = if download
+        # `Downloads.download` only returns/throws once the whole transfer is
+        # done, so it's safe to catch a real 404 afterwards and retry.
+        try
+            (_downloadURL(url), ext)
+        catch err
+            _isMissingURLError(err) || rethrow()
+            @info(string("Error fetching URL. Trying alternative extensions for ", url))
+            altURL, altExt = _alternateURL(url, ext)
+            (_downloadURL(altURL), altExt)
+        end
+    else
+        # Streaming forwards bytes to the caller as they arrive, often *before*
+        # `Downloads.download` raises on a non-2xx status (many servers send an
+        # error-page body first) -- too late to fall back cleanly. So check
+        # existence with a cheap HEAD request first instead. `request` (unlike
+        # `download`) never throws on a plain non-2xx status, so a genuine
+        # double-miss is raised explicitly below.
+        if _isMissingResponse(_headResponse(url))
+            @info(string("Error fetching URL. Trying alternative extensions for ", url))
+            url, ext = _alternateURL(url, ext)
+            altResp = _headResponse(url)
+            if _isMissingResponse(altResp)
+                throw(Downloads.RequestError(url, Downloads.Curl.CURLE_OK, "", altResp))
+            end
+        end
+        (_streamURL(url), ext)
     end
 
+    ext == ".bz2" && return Bzip2DecompressorStream(stream)
+    ext == ".gz" && return GzipDecompressorStream(stream)
+    return stream
+end
+
+"Downloads the whole URL to a temporary file, then opens (and unlinks) it."
+function _downloadURL(url::String)::IO
+    tmpPath = Downloads.download(url, tempname())
     oo = open(tmpPath, "r")
     try
         rm(tmpPath; force=true)   # unlink now; the open fd keeps the data readable on Unix
     catch
         # e.g. Windows can't remove an open file -- leave it for OS temp cleanup
     end
-
-    ext == ".bz2" && return Bzip2DecompressorStream(oo)
-    ext == ".gz" && return GzipDecompressorStream(oo)
     return oo
+end
+
+"""
+A readable `IO` fed by a background task streaming `Downloads.download`
+straight into a `Base.BufferStream`, so bytes are available to read (and
+decompress) as they arrive instead of waiting for the whole transfer.
+"""
+struct URLStream <: IO
+    buf::Base.BufferStream
+    task::Task
+end
+
+Base.isopen(s::URLStream) = isopen(s.buf)
+Base.bytesavailable(s::URLStream) = bytesavailable(s.buf)
+Base.readavailable(s::URLStream) = readavailable(s.buf)
+Base.unsafe_read(s::URLStream, p::Ptr{UInt8}, n::UInt) = unsafe_read(s.buf, p, n)
+Base.read(s::URLStream, ::Type{UInt8}) = read(s.buf, UInt8)
+
+"`eof` also surfaces any error the download task raised (e.g. a 404), once
+the buffer has caught up to it, by re-throwing the task's original exception."
+function Base.eof(s::URLStream)
+    isEOF = eof(s.buf)
+    isEOF && _waitRethrow(s.task)
+    return isEOF
+end
+
+function Base.close(s::URLStream)
+    close(s.buf)
+    try
+        _waitRethrow(s.task)
+    catch
+        # already surfaced to the reader via eof/read; don't re-raise on close
+    end
+end
+
+function _waitRethrow(task::Task)
+    try
+        wait(task)
+    catch err
+        err isa TaskFailedException ? rethrow(err.task.exception) : rethrow(err)
+    end
+end
+
+"Streams the URL into a `URLStream`, blocking only until the first bytes
+arrive (or the request fails/completes empty) so failures like a 404
+surface immediately without waiting for the full transfer."
+function _streamURL(url::String)::URLStream
+    buf = Base.BufferStream()
+    task = @async try
+        Downloads.download(url, buf)
+    finally
+        close(buf)
+    end
+    stream = URLStream(buf, task)
+    eof(stream)
+    return stream
 end
 
 function getFileExtension(filename::String)

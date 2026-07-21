@@ -3,6 +3,7 @@ using AtlasIO
 using CodecZlib: GzipDecompressor   # for verifying the parallel-gzip writer's output
 using Sockets
 using Downloads
+using TranscodingStreams
 
 """
 Minimal single-shot HTTP server for exercising `smartOpen` over `http://`.
@@ -258,37 +259,72 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
         gzBytes    = read(atlasFileNameGz)
         plainBytes = read(atlasFileName)
 
-        withHTTPServer(Dict("/test.jsonl.gz" => gzBytes)) do base
-            io = smartOpen(base * "/test.jsonl.gz", "r")
-            atlas = openAtlas(io)
-            @test atlas.description == "Test Atlas"
-            @test length(nextMaps(atlas)) == TOTAL_MAPS
-            close(io)
+        @testset "buffered (default): streams via Base.BufferStream" begin
+            # a HEAD existence-check precedes the streamed GET, so n=2
+            withHTTPServer(Dict("/test.jsonl.gz" => gzBytes); n=2) do base
+                io = smartOpen(base * "/test.jsonl.gz", "r")
+                @test io isa TranscodingStreams.TranscodingStream
+                @test io.stream isa AtlasIO.URLStream
+                atlas = openAtlas(io)
+                @test atlas.description == "Test Atlas"
+                @test length(nextMaps(atlas)) == TOTAL_MAPS
+                close(io)
+            end
+
+            withHTTPServer(Dict("/test.jsonl" => plainBytes); n=2) do base
+                io = smartOpen(base * "/test.jsonl", "r")
+                @test io isa AtlasIO.URLStream
+                atlas = openAtlas(io)
+                @test atlas.description == "Test Atlas"
+                close(io)
+            end
+
+            # request .bz2 that doesn't exist -- HEAD 404s, HEAD on the
+            # uncompressed fallback succeeds, then that URL is streamed (n=3)
+            withHTTPServer(Dict("/test.jsonl" => plainBytes); n=3) do base
+                io = smartOpen(base * "/test.jsonl.bz2", "r")
+                atlas = openAtlas(io)
+                @test atlas.description == "Test Atlas"
+                close(io)
+            end
+
+            # a genuine 404 (no fallback candidate matches either) propagates as
+            # an error -- both HEAD checks 404, no GET is ever attempted (n=2)
+            withHTTPServer(Dict{String,Vector{UInt8}}(); n=2) do base
+                @test_throws Downloads.RequestError smartOpen(base * "/missing.jsonl", "r")
+            end
         end
 
-        withHTTPServer(Dict("/test.jsonl" => plainBytes)) do base
-            io = smartOpen(base * "/test.jsonl", "r")
-            atlas = openAtlas(io)
-            @test atlas.description == "Test Atlas"
-            close(io)
+        @testset "download=true: fetches to a temp file first" begin
+            withHTTPServer(Dict("/test.jsonl.gz" => gzBytes)) do base
+                io = smartOpen(base * "/test.jsonl.gz", "r"; download=true)
+                @test io isa TranscodingStreams.TranscodingStream
+                @test io.stream isa IOStream
+                atlas = openAtlas(io)
+                @test atlas.description == "Test Atlas"
+                @test length(nextMaps(atlas)) == TOTAL_MAPS
+                close(io)
+            end
+
+            # request .bz2 that doesn't exist (404) -- falls back to the
+            # uncompressed name (n=2: the failed GET, then the successful one)
+            withHTTPServer(Dict("/test.jsonl" => plainBytes); n=2) do base
+                io = smartOpen(base * "/test.jsonl.bz2", "r"; download=true)
+                atlas = openAtlas(io)
+                @test atlas.description == "Test Atlas"
+                close(io)
+            end
+
+            # a genuine 404 (no fallback candidate matches) propagates as an error
+            withHTTPServer(Dict{String,Vector{UInt8}}(); n=2) do base
+                @test_throws Downloads.RequestError smartOpen(base * "/missing.jsonl", "r"; download=true)
+            end
         end
 
-        # request .bz2 that doesn't exist (404) -- falls back to the uncompressed name
-        withHTTPServer(Dict("/test.jsonl" => plainBytes); n=2) do base
-            io = smartOpen(base * "/test.jsonl.bz2", "r")
-            atlas = openAtlas(io)
-            @test atlas.description == "Test Atlas"
-            close(io)
-        end
-
-        # a genuine 404 (no fallback candidate matches) propagates as an error
-        withHTTPServer(Dict{String,Vector{UInt8}}(); n=2) do base
-            @test_throws Downloads.RequestError smartOpen(base * "/missing.jsonl", "r")
-        end
-
-        # writing to a URL is not supported
+        # writing to a URL is not supported, regardless of download/buffered mode
         withHTTPServer(Dict{String,Vector{UInt8}}(); n=0) do base
             @test_throws ArgumentError smartOpen(base * "/out.jsonl", "w")
+            @test_throws ArgumentError smartOpen(base * "/out.jsonl", "w"; download=true)
         end
     end
 
