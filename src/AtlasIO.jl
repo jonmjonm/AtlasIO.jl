@@ -2,6 +2,7 @@ module AtlasIO
 
 using StructTypes, JSON3, Dates
 using TranscodingStreams, CodecBzip2, CodecZlib
+using Downloads
 
 
 export Map,
@@ -334,12 +335,18 @@ function Base.close(atlas::Atlas)
 end
 
 """
-opens an IO stream which is wrapped in a compression pipe 
+opens an IO stream which is wrapped in a compression pipe
 if the filename extension suggests it. Currently supports .gz and .bz2.
 Defaults to regular uncompressed writing/reading if not one of these extensions.
 Returns *nothing* if unsure what to do.
+
+`fileName` may also be an `http://` or `https://` URL, in which case the
+resource is downloaded to a temporary file and opened for reading (only
+`io_mode=="r"` is supported for URLs).
 """
 function smartOpen(fileName::String, io_mode::String)::Union{IO,Nothing}
+    _isURL(fileName) && return _smartOpenURL(fileName, io_mode)
+
     ext,base=getFileExtension(fileName)
 
     if ((io_mode=="w") |(io_mode=="a"))
@@ -428,6 +435,57 @@ Any other error (permission denied, missing directory, disk full, ...) is a real
 failure and should propagate as-is rather than being masked by a second, unrelated
 open attempt."
 _isMissingFileError(err) = err isa SystemError && err.errnum == Base.Libc.ENOENT
+
+_isURL(s::AbstractString) = startswith(s, "http://") || startswith(s, "https://")
+
+"True if `err` indicates the remote resource simply doesn't exist (HTTP 404) --
+the only case where retrying `smartOpen` with an alternate compression extension
+makes sense for a URL."
+_isMissingURLError(err) = err isa Downloads.RequestError && err.response.status == 404
+
+"Strip a URL's query string and fragment so `getFileExtension` sees only the path."
+function _urlExtension(url::AbstractString)
+    p = first(split(url, '#'; limit=2))
+    p = first(split(p, '?'; limit=2))
+    return getFileExtension(String(p))[1]
+end
+
+"Swap a URL's compression extension: drop `.gz`/`.bz2` if present, else append `.gz`."
+function _alternateURL(url::String, ext::String)
+    if ext == ".gz" || ext == ".bz2"
+        base = url[1:end-length(ext)]
+        return base, _urlExtension(base)
+    else
+        return string(url, ".gz"), ".gz"
+    end
+end
+
+function _smartOpenURL(url::String, io_mode::String)::Union{IO,Nothing}
+    io_mode == "r" || throw(ArgumentError(
+        "smartOpen only supports io_mode=\"r\" for URLs (got \"$io_mode\") for $url"))
+
+    ext = _urlExtension(url)
+
+    tmpPath, ext = try
+        (Downloads.download(url, tempname()), ext)
+    catch err
+        _isMissingURLError(err) || rethrow()
+        @info(string("Error fetching URL. Trying alternative extensions for ", url))
+        altURL, altExt = _alternateURL(url, ext)
+        (Downloads.download(altURL, tempname()), altExt)
+    end
+
+    oo = open(tmpPath, "r")
+    try
+        rm(tmpPath; force=true)   # unlink now; the open fd keeps the data readable on Unix
+    catch
+        # e.g. Windows can't remove an open file -- leave it for OS temp cleanup
+    end
+
+    ext == ".bz2" && return Bzip2DecompressorStream(oo)
+    ext == ".gz" && return GzipDecompressorStream(oo)
+    return oo
+end
 
 function getFileExtension(filename::String)
     i=findlast(isequal('.'),filename)
