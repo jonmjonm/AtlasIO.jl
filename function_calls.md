@@ -60,6 +60,29 @@ Map{T}(name, districting, weight, data)       # positional
 Map{T,W}(x::Dict{String,Any})                 # build from a parsed JSON dict
 ```
 
+#### `MapData{T,W<:Real}`
+Like `Map` but without `districting`: just `name::String`, `weight::W`,
+`data::T`. Produced by `parseMapData`/`nextMapData`/`parseBufferToMapData` for
+callers that only need a map's data fields -- reconstructing `districting`
+(one key-tuple per graph node) is by far the most expensive part of parsing a
+full `Map`, and `MapData` skips it entirely.
+
+#### `AtlasFormatError(msg) <: Exception`
+Raised by `openAtlas` (and the `nextMap`/`nextMapData`/`parseBufferToMap`/
+`parseBufferToMapData`/`parseMapData` parse paths) when input doesn't parse as
+a valid Atlas file/line -- e.g. the file is some other JSON document (a
+dual-graph file, say) rather than an Atlas, it's truncated, or a map line is
+malformed. Carries a plain-text `msg` describing what went wrong.
+
+#### `AtlasOutput`
+Output sink for an atlas's serialized map bytes that hides how the target is
+written. For a `.gz` path it emits byte-targeted gzip members compressed in
+parallel; for any other path it writes through a `smartOpen` stream (plain, or
+serial `.bz2`). Build with `openAtlasOutput`, feed batches of in-order
+serialized maps with `writeMaps!`, and `close` it when done.
+
+Fields: `io::IO`, `gzip::Bool`, `cores::Int`.
+
 ### Opening / Closing Streams
 
 #### `smartOpen(fileName::String, io_mode::String; download::Bool=false)::Union{IO,Nothing}`
@@ -103,6 +126,27 @@ Reads the next map from an `EachLine` iterator over the stream.
 Parses a single already-read line `buff` into a `Map`, using the atlas's map
 parameter and weight types. Useful for custom/parallel read loops.
 
+#### `nextMapData(atlas::Atlas)::MapData`
+Like `nextMap` but returns a `MapData` -- `districting` is not parsed. ~7x
+faster and ~28x fewer allocations per map than `nextMap` in benchmarks on a
+several-hundred-node graph. Composes with `skipMap`/`nextMap`/`nextMapData` the
+same way `nextMap` does (reads from wherever `atlas` is currently positioned).
+
+#### `parseMapData(buff::String, T, W=Int64)::MapData{T,W}`
+Parses a single already-read line `buff` into a `MapData`, touching only
+`name`, `weight`, and `data`. Uses JSON3's plain lazy-object read plus three
+field lookups, rather than the `StructTypes.CustomStruct` machinery `Map`'s
+parse goes through (which eagerly materializes the whole JSON object,
+`districting` included, regardless of what the constructor actually uses).
+Places the same constraint on `T` that `Map{T,W}` does -- none: a `Dict`-like
+`T` gets the fast key-remapping conversion, anything else is built directly
+from the raw value.
+
+#### `parseBufferToMapData(atlas::Atlas, buff::String)::MapData`
+Like `parseBufferToMap` but returns a `MapData` -- `districting` is not
+parsed. Intended for the same batched/threaded use: read lines serially, parse
+each with this in parallel.
+
 #### `nextMaps(atlas::Atlas; n=typemax(Int), batch=256) -> Vector{Map}`
 Reads up to `n` maps, parsing them across all available threads. Lines are read
 serially in chunks of `batch` (with the next chunk prefetched on a separate
@@ -133,6 +177,61 @@ Writes a collection of `Map`s. JSON serialization is done in parallel across
 threads, then the strings are written to `io` serially in order. Output is
 byte-identical to calling `addMap` per map. Returns total bytes written. Start
 Julia with `-t auto` to benefit.
+
+### Parallel Gzip Output
+
+Writes `.gz` atlases as a series of byte-targeted gzip members compressed in
+parallel across threads, concatenating into one valid multi-member `.gz`
+(RFC 1952) readable by `gunzip`/`zcat`/`openAtlas`. The output is not
+byte-identical to a single-stream `.gz` (a different, equally valid encoding of
+the same content). Intended for tools that already produce serialized map
+bytes (e.g. AtlasUtilities' `add`/`relabel`): `openAtlasOutput`, repeated
+`writeMaps!`, then `close`.
+
+#### `openAtlasOutput(path::AbstractString, headerBytes::Vector{UInt8}, cores::Int=Threads.nthreads())::AtlasOutput`
+Opens `path` for writing and emits the atlas `headerBytes` (its three header
+lines, e.g. from `atlasHeaderBytes`). For `.gz` output the header is written as
+its own gzip member and the file is opened raw so subsequent map members can
+be appended; otherwise the header is written through a `smartOpen` stream
+(plain or `.bz2`). `cores` is the parallel-compression worker count for the map
+body. Start Julia with `-t auto` to benefit.
+
+#### `writeMaps!(out::AtlasOutput, bytes::Vector{Vector{UInt8}})`
+Appends the in-order serialized map byte-vectors `bytes` to `out`: as
+byte-targeted parallel gzip members for a `.gz` target (via
+`writeGzipMembers!`), or written straight through the stream otherwise.
+
+#### `writeGzipMembers!(out::IO, bytes::Vector{Vector{UInt8}}, cores::Int=Threads.nthreads(); target::Int=GZIP_MEMBER_TARGET)`
+Writes the in-order serialized records `bytes` to `out` as byte-targeted gzip
+members: groups consecutive records into ~`target`-byte groups
+(`groupByBytes`), gzips each group into one member in parallel across `cores`
+tasks, then writes the members serially in record order. The concatenated
+members form one valid `.gz`.
+
+#### `groupByBytes(sizes::Vector{Int}, target::Int) -> Vector{UnitRange{Int}}`
+Partitions `1:length(sizes)` into consecutive ranges whose summed `sizes` each
+reach at least `target` bytes (the final range may be smaller). Each range
+becomes one gzip member -- grouping by bytes (not map count) keeps every
+member comfortably above deflate's 32 KB history window.
+
+#### `gzipMember(bytes::Vector{UInt8})::Vector{UInt8}`
+Compresses `bytes` into one standalone gzip member, concatenable into a
+multi-member `.gz`.
+
+#### `isGzipOutput(path::AbstractString)::Bool`
+`true` if writing `path` should produce gzip output (drives the
+parallel-member path); `.bz2` is excluded and falls back to the serial stream.
+
+#### `atlasHeaderBytes(path::AbstractString)::Vector{UInt8}`
+Reads an atlas's three header lines from `path` as raw bytes (with trailing
+newlines), for re-emitting through an `AtlasOutput`.
+
+#### `close(out::AtlasOutput)`
+Closes the underlying `IO` stream of `out`. (`Base.close` method.)
+
+#### `GZIP_MEMBER_TARGET`
+Default target of uncompressed bytes per gzip member (256 KB -- 8x deflate's
+32 KB window).
 
 ### Utilities
 
@@ -174,6 +273,15 @@ io = smartOpen("out.jsonl.gz", "w")
 newAtlas(io, atlasHeader, atlasParams)
 addMap(io, map)
 close(io)
+```
+
+**Write with `AtlasOutput` (parallel gzip members, for pre-serialized map bytes):**
+```julia
+headerBytes = atlasHeaderBytes("in.jsonl.gz")   # or build the 3 header lines yourself
+out = openAtlasOutput("out.jsonl.gz", headerBytes)
+mapBytes = [JSON3.write(m) |> codeunits |> collect for m in maps]  # Vector{Vector{UInt8}}, in order
+writeMaps!(out, mapBytes)
+close(out)
 ```
 
 ---
