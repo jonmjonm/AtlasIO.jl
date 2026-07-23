@@ -6,6 +6,7 @@ using Downloads
 
 
 export Map,
+    MapData,
     smartOpen,
     AtlasHeader,
     AtlasFormatError,
@@ -15,6 +16,7 @@ export Map,
     openAtlas,
     nextMap,
     nextMaps,
+    nextMapData,
     addMap,
     addMaps,
     close,
@@ -23,6 +25,8 @@ export Map,
     eof,
     copyAtlasHeader,
     parseBufferToMap,
+    parseBufferToMapData,
+    parseMapData,
     AtlasOutput,
     openAtlasOutput,
     writeMaps!,
@@ -295,6 +299,75 @@ function nextMaps(atlas::Atlas; n::Integer=typemax(Int), batch::Integer=256)
         end
     end
     return out
+end
+
+"""
+    MapData{T,W<:Real}
+
+Like [`Map`](@ref) but without `districting`: just `name`, `weight`, and `data`.
+Produced by [`parseMapData`](@ref)/[`nextMapData`](@ref)/[`parseBufferToMapData`](@ref)
+for callers that only need a map's data fields. Parsing a full `Map` pays to
+reconstruct `districting` (one key-tuple per graph node -- by far the most
+expensive part of the parse) even when the caller never looks at it; `MapData`
+skips that work entirely. There is no field to accidentally misuse in its place --
+unlike, say, a `Map` given an empty placeholder `districting`.
+"""
+struct MapData{T,W<:Real}
+    name::String
+    weight::W
+    data::T
+end
+
+"""
+    parseMapData(buff, T, W=Int64) -> MapData{T,W}
+
+Parse a map line `buff` into a [`MapData`](@ref): only `name`, `weight`, and
+`data` are touched. `districting` is never materialized -- this is JSON3's plain
+lazy-object read plus three field lookups, not the `StructTypes.CustomStruct`
+machinery `Map`'s parse goes through (which eagerly materializes the entire JSON
+object, `districting` included, regardless of what the constructor it dispatches
+to actually uses). Wraps a parse failure as an `AtlasFormatError`, matching
+`Map`'s parse (`_parseMapLine`).
+"""
+function parseMapData(buff::String, ::Type{T}, ::Type{W}=Int64) where {T,W<:Real}
+    try
+        obj = JSON3.read(buff)
+        return MapData{T,W}(String(obj["name"]), W(obj["weight"]),
+                            T(string(k) => v for (k, v) in pairs(obj["data"])))
+    catch e
+        throw(AtlasFormatError("not a valid Atlas map line: failed to parse as JSON " *
+                               "($(sprint(showerror, e)))."))
+    end
+end
+
+"""
+    nextMapData(atlas::Atlas) -> MapData
+
+Like [`nextMap`](@ref) but returns a [`MapData`](@ref) -- `districting` is not
+parsed. Composes with `skipMap`/`nextMap` the same way `nextMap` does (reads
+from wherever `atlas` is currently positioned).
+"""
+function nextMapData(atlas::Atlas)::MapData
+    eof(atlas.io) && throw(EOFError())
+    buff = try
+        readline(atlas.io)
+    catch e
+        throw(AtlasFormatError("failed to read a map line: the underlying stream raised " *
+                               "an error (possibly a truncated or corrupt compressed file) " *
+                               "($(sprint(showerror, e)))."))
+    end
+    return parseMapData(buff, atlas.mapParamType, atlas.weightType)
+end
+
+"""
+    parseBufferToMapData(atlas::Atlas, buff::String) -> MapData
+
+Like [`parseBufferToMap`](@ref) but returns a [`MapData`](@ref) -- `districting`
+is not parsed. Intended for the same batched/threaded use: read lines serially,
+parse each with this in parallel.
+"""
+function parseBufferToMapData(atlas::Atlas, buff::String)::MapData
+    return parseMapData(buff, atlas.mapParamType, atlas.weightType)
 end
 
 function addMap(io::IO,map::Map{T}) where T

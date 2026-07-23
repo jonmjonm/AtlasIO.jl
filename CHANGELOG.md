@@ -2,6 +2,15 @@
 
 ## [0.1.6]
 
+- Add `MapData`/`parseMapData`/`nextMapData`/`parseBufferToMapData`: a lighter
+  read path for callers that only need a map's `name`/`weight`/`data`, not
+  `districting`. Parsing a full `Map` reconstructs `districting` unconditionally
+  (one key-tuple per graph node), which dominates the cost of the parse even
+  when the caller never looks at it; the new functions skip that work entirely
+  by reading a plain lazy JSON3 object instead of going through `Map`'s
+  `StructTypes.CustomStruct` path (which eagerly materializes the whole JSON
+  object regardless of what its constructor actually uses). ~7x faster and
+  ~28x fewer allocations per map in benchmarks on a several-hundred-node graph.
 - Fix `smartOpen` over `http(s)://` crashing with `type RequestError has no
   field status` instead of surfacing a real connection error, when a `HEAD`
   existence-check fails below the HTTP level (e.g. connection refused/aborted

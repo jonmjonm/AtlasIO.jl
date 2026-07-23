@@ -137,6 +137,49 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
         close(io)
     end
 
+    @testset "MapData/nextMapData/parseBufferToMapData: name/weight/data match Map's, no districting" begin
+        io = smartOpen(atlasFileName, "r")
+        atlas = openAtlas(io)
+
+        m1 = nextMap(atlas)                 # ground truth, from the real Map parse
+        md1 = nextMapData(atlas)            # map2, parsed via the fast path
+        @test md1 isa MapData
+        @test !hasfield(MapData, :districting)
+        @test md1.name == "map2"
+        @test md1.weight == 1
+        @test md1.data == Dict{String,Int64}("param" => 2, "trees" => 4)
+        close(io)
+
+        io2 = smartOpen(atlasFileName, "r")
+        atlas2 = openAtlas(io2)
+        raw_line = readline(atlas2.io)      # map1's raw line
+        md = parseBufferToMapData(atlas2, raw_line)
+        @test md.name == m1.name
+        @test md.weight == m1.weight
+        @test md.data == m1.data
+        close(io2)
+
+        io3 = smartOpen(atlasFileName, "r")
+        atlas3 = openAtlas(io3)
+        mdRaw = parseMapData(readline(atlas3.io), atlas3.mapParamType, atlas3.weightType)
+        @test mdRaw.name == "map1"
+        @test mdRaw.data == m1.data
+        close(io3)
+    end
+
+    @testset "nextMapData raises EOFError/AtlasFormatError like nextMap" begin
+        io = smartOpen(atlasFileName, "r")
+        atlas = openAtlas(io)
+        while !eof(atlas); nextMapData(atlas); end
+        @test_throws EOFError nextMapData(atlas)
+        close(io)
+
+        io2 = smartOpen(atlasFileName, "r")
+        atlas2 = openAtlas(io2)
+        @test_throws AtlasFormatError parseBufferToMapData(atlas2, "not json")
+        close(io2)
+    end
+
     @testset "Write/Read Round-trip" begin
         header = AtlasHeader("RT Atlas", "2024-01-01T00:00:00", "Dict{String,Any}", "Dict{String,Any}")
         params = Dict{String,Any}("n" => 2)
