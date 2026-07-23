@@ -1,5 +1,6 @@
 using Test
 using AtlasIO
+using JSON3                        # for comparing parseMapData against a direct Map parse
 using CodecZlib: GzipDecompressor   # for verifying the parallel-gzip writer's output
 using Sockets
 using Downloads
@@ -135,6 +136,58 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
         @test m.name == "map1"
         @test m.districting == first_map_truth
         close(io)
+    end
+
+    @testset "MapData/nextMapData/parseBufferToMapData: name/weight/data match Map's, no districting" begin
+        io = smartOpen(atlasFileName, "r")
+        atlas = openAtlas(io)
+
+        m1 = nextMap(atlas)                 # ground truth, from the real Map parse
+        md1 = nextMapData(atlas)            # map2, parsed via the fast path
+        @test md1 isa MapData
+        @test !hasfield(MapData, :districting)
+        @test md1.name == "map2"
+        @test md1.weight == 1
+        @test md1.data == Dict{String,Int64}("param" => 2, "trees" => 4)
+        close(io)
+
+        io2 = smartOpen(atlasFileName, "r")
+        atlas2 = openAtlas(io2)
+        raw_line = readline(atlas2.io)      # map1's raw line
+        md = parseBufferToMapData(atlas2, raw_line)
+        @test md.name == m1.name
+        @test md.weight == m1.weight
+        @test md.data == m1.data
+        close(io2)
+
+        io3 = smartOpen(atlasFileName, "r")
+        atlas3 = openAtlas(io3)
+        mdRaw = parseMapData(readline(atlas3.io), atlas3.mapParamType, atlas3.weightType)
+        @test mdRaw.name == "map1"
+        @test mdRaw.data == m1.data
+        close(io3)
+    end
+
+    @testset "parseMapData matches Map's parse for a non-Dict, non-object data/T (Map places no such constraint)" begin
+        line = """{"name":"m1","weight":1,"data":42,"districting":[{"[\\"a\\"]":1}]}"""
+        m = JSON3.read(line, Map{Int64,Int64})
+        md = parseMapData(line, Int64, Int64)
+        @test md.name == m.name == "m1"
+        @test md.weight == m.weight == 1
+        @test md.data == m.data == 42
+    end
+
+    @testset "nextMapData raises EOFError/AtlasFormatError like nextMap" begin
+        io = smartOpen(atlasFileName, "r")
+        atlas = openAtlas(io)
+        while !eof(atlas); nextMapData(atlas); end
+        @test_throws EOFError nextMapData(atlas)
+        close(io)
+
+        io2 = smartOpen(atlasFileName, "r")
+        atlas2 = openAtlas(io2)
+        @test_throws AtlasFormatError parseBufferToMapData(atlas2, "not json")
+        close(io2)
     end
 
     @testset "Write/Read Round-trip" begin
