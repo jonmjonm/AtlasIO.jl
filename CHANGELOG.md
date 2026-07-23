@@ -11,6 +11,10 @@
   `StructTypes.CustomStruct` path (which eagerly materializes the whole JSON
   object regardless of what its constructor actually uses). ~7x faster and
   ~28x fewer allocations per map in benchmarks on a several-hundred-node graph.
+  Places the same constraint on `T`/`data` that `Map{T,W}` does -- none: a
+  `Dict`-like `T` gets the fast key-remapping conversion, anything else is
+  built directly from the raw value, matching a non-object `data`/non-`Dict`
+  `mapParamType` the way a full `Map` parse already handles it.
 - Fix `smartOpen` over `http(s)://` crashing with `type RequestError has no
   field status` instead of surfacing a real connection error, when a `HEAD`
   existence-check fails below the HTTP level (e.g. connection refused/aborted

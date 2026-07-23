@@ -1,5 +1,6 @@
 using Test
 using AtlasIO
+using JSON3                        # for comparing parseMapData against a direct Map parse
 using CodecZlib: GzipDecompressor   # for verifying the parallel-gzip writer's output
 using Sockets
 using Downloads
@@ -165,6 +166,15 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
         @test mdRaw.name == "map1"
         @test mdRaw.data == m1.data
         close(io3)
+    end
+
+    @testset "parseMapData matches Map's parse for a non-Dict, non-object data/T (Map places no such constraint)" begin
+        line = """{"name":"m1","weight":1,"data":42,"districting":[{"[\\"a\\"]":1}]}"""
+        m = JSON3.read(line, Map{Int64,Int64})
+        md = parseMapData(line, Int64, Int64)
+        @test md.name == m.name == "m1"
+        @test md.weight == m.weight == 1
+        @test md.data == m.data == 42
     end
 
     @testset "nextMapData raises EOFError/AtlasFormatError like nextMap" begin

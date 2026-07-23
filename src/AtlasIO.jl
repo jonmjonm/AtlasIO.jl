@@ -328,12 +328,22 @@ machinery `Map`'s parse goes through (which eagerly materializes the entire JSON
 object, `districting` included, regardless of what the constructor it dispatches
 to actually uses). Wraps a parse failure as an `AtlasFormatError`, matching
 `Map`'s parse (`_parseMapLine`).
+
+`Map{T,W}` places no constraint on `T` beyond "constructible from whatever `data`
+parsed to" -- `data` need not be a JSON object. `T <: AbstractDict` gets the fast,
+allocation-light conversion (remapping JSON3's `Symbol` keys to `String`, since
+e.g. `Dict{String,Any}` can't be built directly from a `Symbol`-keyed source);
+any other `T` is simply constructed from the raw (lazily-parsed) value, exactly
+as `Map`'s parse does via `T(x["data"])`, so a non-`Dict` `mapParamType` -- or
+`data` that isn't an object -- works the same as it does for a full `Map`.
 """
 function parseMapData(buff::String, ::Type{T}, ::Type{W}=Int64) where {T,W<:Real}
     try
         obj = JSON3.read(buff)
-        return MapData{T,W}(String(obj["name"]), W(obj["weight"]),
-                            T(string(k) => v for (k, v) in pairs(obj["data"])))
+        rawData = obj["data"]
+        dataVal = T <: AbstractDict ? T(string(k) => v for (k, v) in pairs(rawData)) :
+                                      T(rawData)
+        return MapData{T,W}(String(obj["name"]), W(obj["weight"]), dataVal)
     catch e
         throw(AtlasFormatError("not a valid Atlas map line: failed to parse as JSON " *
                                "($(sprint(showerror, e)))."))
