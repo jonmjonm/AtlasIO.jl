@@ -445,8 +445,12 @@ the only case where retrying `smartOpen` with an alternate compression extension
 makes sense for a URL."
 _isMissingURLError(err) = err isa Downloads.RequestError && err.response.status == 404
 
-"HEAD-requests `url`, returning its `Response` (or `nothing` on a connection-
-level failure, which is left for the real GET in `_streamURL` to surface)."
+"HEAD-requests `url`, returning its `Response`. On a connection-level failure --
+one that never got far enough to receive an HTTP status -- `Downloads.request`
+itself returns (rather than throws) a `RequestError` when `throw=false`; on a
+failure it doesn't even return normally from (e.g. a lower-level exception),
+`nothing` is returned instead. Either failure case is left for the real GET in
+`_streamURL` to surface as a proper error."
 function _headResponse(url::String)
     try
         return Downloads.request(url; method="HEAD", throw=false)
@@ -455,8 +459,11 @@ function _headResponse(url::String)
     end
 end
 
-"True if `resp` (from `_headResponse`) confirms the URL doesn't exist (HTTP 404)."
-_isMissingResponse(resp) = resp !== nothing && resp.status == 404
+"True if `resp` (from `_headResponse`) confirms the URL doesn't exist (HTTP 404).
+`resp` may be a `Response`, a `RequestError` (a connection-level failure that
+never reached HTTP semantics -- no `.status` to check, so not a confirmed 404),
+or `nothing`; only a real `Response` can confirm a 404."
+_isMissingResponse(resp) = resp isa Downloads.Response && resp.status == 404
 
 "Strip a URL's query string and fragment so `getFileExtension` sees only the path."
 function _urlExtension(url::AbstractString)

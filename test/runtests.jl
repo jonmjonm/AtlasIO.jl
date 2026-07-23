@@ -295,6 +295,32 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
             end
         end
 
+        @testset "_isMissingResponse handles a connection-level failure (RequestError), not just a Response" begin
+            # Downloads.request(...; throw=false) can *return* (not throw) a
+            # RequestError when the failure never reached HTTP semantics -- e.g.
+            # the connection itself was refused/aborted -- so there's no .status
+            # to check. _isMissingResponse must treat that as "not confirmed
+            # missing" rather than crash trying to read resp.status off it.
+            dummyResp = Downloads.Response(nothing, "http://x", 200, "", Pair{String,String}[])
+            connErr = Downloads.RequestError("http://x", 7, "Couldn't connect", dummyResp)
+            @test AtlasIO._isMissingResponse(connErr) == false
+            @test AtlasIO._isMissingResponse(nothing) == false
+            @test AtlasIO._isMissingResponse(
+                Downloads.Response(nothing, "http://x", 404, "", Pair{String,String}[])) == true
+            @test AtlasIO._isMissingResponse(
+                Downloads.Response(nothing, "http://x", 200, "", Pair{String,String}[])) == false
+
+            # End-to-end: nothing is listening on this port at all, so the HEAD
+            # request fails below the HTTP level. Must not crash inside
+            # _isMissingResponse; propagates as a real connection error from the
+            # subsequent GET instead.
+            deadServer = listen(Sockets.localhost, 0)
+            _, deadPort = getsockname(deadServer)
+            close(deadServer)   # nothing listens here now
+            @test_throws Downloads.RequestError smartOpen(
+                "http://127.0.0.1:$(Int(deadPort))/dead.jsonl", "r")
+        end
+
         @testset "download=true: fetches to a temp file first" begin
             withHTTPServer(Dict("/test.jsonl.gz" => gzBytes)) do base
                 io = smartOpen(base * "/test.jsonl.gz", "r"; download=true)
