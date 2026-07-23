@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.6]
+
+- Fix `smartOpen` over `http(s)://` crashing with `type RequestError has no
+  field status` instead of surfacing a real connection error, when a `HEAD`
+  existence-check fails below the HTTP level (e.g. connection refused/aborted
+  before any status was received). `Downloads.request(...; throw=false)`
+  returns (rather than throws) a `RequestError` in that case; `_isMissingResponse`
+  now checks `resp isa Downloads.Response` before reading `.status`, instead of
+  assuming any non-`nothing` result has one.
+
 ## [0.1.5]
 
 - `smartOpen` can now read directly from `http://`/`https://` URLs, not just
