@@ -1,0 +1,5 @@
+"This is an Atlas for Redistricting Maps (written by Python)"
+{"description": "v1 fixture written by Python json (not AtlasIO)", "date": "2026-11-22T00:00:00", "atlasParamType": "Dict{String, Any}", "mapParamType": "Dict{String, Any}", "weightType": "Int64"}
+{"levels in graph": ["county", "prec_id"], "note": "Do\u00f1a Ana", "gamma": 0.0}
+{"name": "Do\u00f1a Ana", "weight": 1, "data": {"gamma": 0.0, "label": "a\u00f1o"}, "districting": [{"[\"DO\\u00d1A ANA\"]": 2}, {"[\"37011\"]": 1}, {"[\"SANTA F\\u00c9\", \"p1\"]": 3}]}
+{"name": "ascii only", "weight": 2, "data": {"x": [1.0, 2.5], "y": null}, "districting": [{"[\"A\"]": 1}, {"[\"B\",\"p1\"]": 2}, {"[\"B\", \"p2\"]": 1}]}
