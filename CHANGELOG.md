@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.2.1]
+
+AtlasIO reads **format v2** (see `atlas_format.md`), in Julia and in Python. It still **writes v1 only**, so
+nothing changes for files it writes; this release lets readers get ahead of a future v2 writer. Everything
+that worked with 0.2.0 works unchanged.
+
+### Added
+
+- **Julia:** `openAtlas`, `nextMap`, `nextMaps`, `parseMap` and `parseBufferToMap` read v2 files, whose maps
+  store the district assignment as a tree (`"assignment"`) instead of v1's list of key strings
+  (`"districting"`). A map reads to the same `Districting` (tuple keys) from either version.
+  `nextMapData`, `parseMapData` and `skipMap` read v2 files too.
+- `Atlas` has a new field, `formatVersion` (`"1"` or `"2"`, from the header). Constructing an `Atlas` without
+  it, as before, gives `"1"`.
+- Readers reject what the v2 spec forbids, with an `AtlasFormatError` naming the map: an empty branch, a
+  district that is not an integer, a map line with both or neither of `districting` and `assignment`, and a
+  map line whose version differs from the header's (a file holds maps of one version only).
+- A header `formatVersion` this AtlasIO does not know raises `AtlasFormatError` asking to upgrade, and a
+  non-string header value now gets a clear message.
+- **Python: the `atlasio` package** (`python/`), installable with
+  `pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.1#subdirectory=python"`. Reads v1
+  and v2, plain, `.gz` and `.bz2`; district keys are tuples, as in Julia. Standard library only (uses
+  `orjson` if installed).
+- **Python: `PythonReader/AtlasIO.py`** keeps its interface and its string district keys, and now reads v2
+  files (keys built in the form AtlasIO.jl writes in v1), `.bz2` files, and `formatVersion`. It reads files as
+  UTF-8 on every platform. `helper_functions.get_node_to_district` accepts string or tuple keys, and now
+  matches keys written with other spacing or escapes.
+- v2 test files (`test/fixtures/v2/`): twins of the frozen v1 files and the spec's examples, made with
+  Python's `json`; each twin must read exactly like its v1 source. CI also checks that AtlasIO.jl 0.1.5 and
+  0.2.0 and the 0.2.0 Python reader fail safely on v2 files (an error, never wrong districts).
+
+### Changed
+
+- `nextMaps` raises a bad line's own error (e.g. `AtlasFormatError`), as `nextMap` does, instead of the
+  threads' `CompositeException`.
+- Docs pin httpimport to a release tag (`refs/tags/v0.2.1`) instead of `main`.
+
 ## [0.2.0]
 
 AtlasIO now uses **JSON.jl** (1.6 or later) instead of JSON3 and StructTypes; JSON3 is deprecated in the
@@ -27,7 +64,7 @@ CI by the `compat-0-1-5` job).
 
 ### Fixed
 
-- District keys containing JSON escapes other than `\"` and `\\` (e.g. `Ñ`, as Python's `json.dumps`
+- District keys containing JSON escapes other than `\"` and `\\` (e.g. `\u00d1`, as Python's `json.dumps`
   writes non-ASCII characters by default) are decoded correctly; 0.1.x dropped the backslash.
 - The documented `writeMaps!` example produced a corrupt atlas (no newlines between maps); it now uses
   `mapBytes`.

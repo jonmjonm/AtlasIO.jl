@@ -5,9 +5,10 @@ Atlas files are JSONL with a fixed 3-line header (comment, `AtlasHeader`, atlas
 parameters) followed by one `Map` per line. Files may be uncompressed
 (`.jsonl`), gzip-compressed (`.jsonl.gz`), or bzip2-compressed (`.jsonl.bz2`).
 
-The **Julia** library is the full read/write implementation. The **Python
-Reader** is read-only and mirrors a subset of the API, plus election-analysis
-helpers.
+The **Julia** library is the full read/write implementation. It reads format
+versions 1 and 2 (see [atlas_format.md](atlas_format.md)) and writes v1. The
+**Python** readers are read-only: the `atlasio` package (`python/`) and the
+original `PythonReader/AtlasIO.py`, plus election-analysis helpers.
 
 ---
 
@@ -39,7 +40,9 @@ Wraps an open `IO` stream plus the header info. `T` is the map parameter type
 (defaults to `Dict{String,Any}` on read).
 
 Fields: `io::IO`, `description::String`, `date::String`, `atlasParam::T`,
-`mapParamType::DataType`, `weightType::DataType`.
+`mapParamType::DataType`, `weightType::DataType`, `formatVersion::String` (`"1"`
+or `"2"`, from the header; added in 0.2.1, and an `Atlas` constructed without it
+is v1).
 
 #### `Districting`
 ```julia
@@ -57,7 +60,7 @@ Constructors:
 ```julia
 Map{T}(; name, districting, weight, data)     # W inferred from weight
 Map{T}(name, districting, weight, data)       # positional
-Map{T,W}(x::Dict{String,Any})                 # build from a parsed JSON dict
+Map{T,W}(x::Dict{String,Any})                 # build from a parsed JSON dict (v1 or v2)
 ```
 
 #### `MapData{T,W<:Real}`
@@ -317,9 +320,38 @@ close(out)
 
 ---
 
+## Python: the `atlasio` package (`python/`)
+
+Read-only; reads format v1 and v2, plain, `.gz` or `.bz2`. Standard library only (uses `orjson` if it is
+installed). Install with
+`pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.1#subdirectory=python"`.
+
+```python
+import atlasio
+with atlasio.open_atlas("atlas.jsonl.gz") as atlas:
+    atlas.description, atlas.date, atlas.format_version, atlas.params
+    for m in atlas:
+        m.name, m.weight, m.data
+        m.districting[("MECKLENBURG", "052")]
+```
+
+- `open_atlas(source)` — `source` is a path (compression chosen by extension) or an open file object (text or
+  binary; left open on `close`). Returns an `Atlas`.
+- `Atlas` — attributes `description`, `date`, `atlas_param_type`, `map_param_type`, `weight_type`,
+  `format_version` (`"1"` or `"2"`), `header` (dict), `params` (line 3). Iterate over it, or call `next_map()`
+  (returns `None` at the end); `close()`; usable in a `with` block.
+- `Map` — `name`, `weight`, `data`, `districting` (dict from key tuples to districts). `raw_districting()`
+  returns the districting with v1-style string keys, as AtlasIO.jl writes them.
+- `parse_map(line)` — parse one map line of either version.
+- `parse_district_key(s)` / `district_key_string(key)` — convert between a v1 key string and a key tuple.
+- `AtlasFormatError` (a `ValueError`) — raised for invalid files and lines, for a `formatVersion` it does not
+  know, and for a map line whose version differs from the header's.
+
 ## Python Reader Library (`PythonReader/`)
 
-Read-only. Import by adding `../PythonReader/` to `sys.path`.
+Read-only. Import by adding `../PythonReader/` to `sys.path`, or with httpimport pinned to a release tag
+(`.../AtlasIO.jl/refs/tags/v0.2.1/PythonReader/`). It is one self-contained file, kept so existing code keeps
+working; new code can use the `atlasio` package above.
 
 ### `AtlasIO.py`
 
@@ -328,7 +360,7 @@ Read-only. Import by adding `../PythonReader/` to `sys.path`.
 ##### `Atlas`
 Holds an open file pointer plus header info: `description`, `date`,
 `atlasParamType`, `mapParamType`, `weightType` (defaults to `"Int64"`),
-`atlasParam`, and `fp`. Provides `__repr__` / `__str__`.
+`formatVersion` (defaults to `"1"`), `atlasParam`, and `fp`. Provides `__repr__` / `__str__`.
 
 ##### `Map`
 A single map: `name`, `weight`, `data`, `districting`. Provides `__repr__` /
@@ -337,12 +369,15 @@ A single map: `name`, `weight`, `data`, `districting`. Provides `__repr__` /
 #### Functions
 
 ##### `openAtlas(fileName)`
-Opens an atlas file (gzip-aware via the `.gz` extension), reads the 3-line
-header, and returns an `Atlas`. Missing `weightType` defaults to `"Int64"`.
+Opens an atlas file (`.gz` and `.bz2` by extension), reads the 3-line
+header, and returns an `Atlas`. Missing `weightType` defaults to `"Int64"`. A
+`formatVersion` other than `"1"` or `"2"` raises `AtlasFormatError`.
 
 ##### `nextMap(atlas)`
 Reads and parses the next map line, returning a `Map` (or `None` at EOF). The
-districting list-of-dicts is flattened into a single `districting` dict.
+`districting` dict has raw string keys such as `'["MECKLENBURG", "052"]'`: in a
+v1 file, the key strings exactly as written; in a v2 file, built in the form
+AtlasIO.jl writes (`", "` between names, only `"` and `\` escaped).
 
 ##### `closeAtlas(atlas)`
 Closes the atlas's underlying file pointer.
@@ -355,7 +390,8 @@ Election-analysis utilities operating on the parsed map/election data.
 
 ##### `get_node_to_district(districting, nodes)`
 Reconstructs the precinct-ID → district mapping from a multiscale districting
-description and a list of `nodes`.
+description and a list of `nodes`. Accepts either kind of district key: strings
+(`AtlasIO.py`) or tuples (`atlasio`).
 
 ##### `sumElection(electionName, node_to_dist, data)`
 Sums one election's votes per district. Returns `(distVoteR, distVoteD,

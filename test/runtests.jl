@@ -782,3 +782,6 @@ include("v1_fixtures.jl")
 
 # AtlasIO 0.2: value types on write/read and the new public API (uses helpers from v1_fixtures.jl).
 include("types_and_api.jl")
+
+# Format v2: reading v2 twins of the v1 fixtures, the spec's examples, and the reader's rejection rules.
+include("v2_fixtures.jl")

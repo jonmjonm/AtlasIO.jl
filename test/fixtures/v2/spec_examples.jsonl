@@ -1,0 +1,7 @@
+"This is an Atlas for Redistricting Maps (v2 spec examples)"
+{"description":"v2 examples from atlas_format.md","date":"2026-11-23T14:05:00.123","atlasParamType":"Dict{String, Any}","mapParamType":"Dict{String, Any}","weightType":"Int64","formatVersion":"2"}
+{"levels in graph":["county","mcd","prec_id"]}
+{"name":"step1200","weight":1,"data":{"gamma":0.0},"assignment":{"MECKLENBURG":{"052":13,"074":14},"WAKE":3}}
+{"name":"three levels","weight":2,"data":{},"assignment":{"MECKLENBURG":{"CHARLOTTE":{"052":13,"074":14},"DAVIDSON":12},"WAKE":3}}
+{"name":"empty assignment","weight":1,"data":{},"assignment":{}}
+{"name":"odd names","weight":1,"data":{},"assignment":{"":{"":1},"a\tb":{"c\nd":2},"q\"\\":3}}

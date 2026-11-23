@@ -1,6 +1,6 @@
 # Atlas File Format
 
-The Atlas format is a JSONL (JSON Lines) format adapted to hold district maps from redistricting efforts. The Atlas format is a simple extension of the JSONL format that allows for the storage of maps and their associated data in a single file. The [AtlasIO.jl Julia library](https://github.com/jonmjonm/AtlasIO.jl/) provides the ability to read and write Atlas files. The [AtlasIO.py Python library](https://github.com/jonmjonm/AtlasIO.jl/tree/main/PythonReader), from the same git repository, provides the ability to read but not the ability to write files. This format was developed by the [Duke Quantifying Gerrymandering Group](https://duke.is/QGBlog). More information about the project can be found on the [Quantifying Gerrymandering blog](https://duke.is/QGBlog) and in the [Quantifying Gerrymandering Documentation](https://duke.is/QGDoc).
+The Atlas format is a JSONL (JSON Lines) format adapted to hold district maps from redistricting efforts. The Atlas format is a simple extension of the JSONL format that allows for the storage of maps and their associated data in a single file. The [AtlasIO.jl Julia library](https://github.com/jonmjonm/AtlasIO.jl/) provides the ability to read and write Atlas files. The Python readers from the same git repository, the [atlasio package](https://github.com/jonmjonm/AtlasIO.jl/tree/main/python) and the original [AtlasIO.py](https://github.com/jonmjonm/AtlasIO.jl/tree/main/PythonReader), provide the ability to read but not the ability to write files. This format was developed by the [Duke Quantifying Gerrymandering Group](https://duke.is/QGBlog). More information about the project can be found on the [Quantifying Gerrymandering blog](https://duke.is/QGBlog) and in the [Quantifying Gerrymandering Documentation](https://duke.is/QGDoc).
 
 The Atlas format is the format used by the Quantifying Gerrymandering Project's redistricting sampling software to save its data. Both [**Cycle Walk**](https://duke.is/CycleWalk) and [**Metropolized Forest Recom**](https://duke.is/MFRecom) write their ensembles of map assignments in the Atlas format described here.
 
@@ -9,7 +9,7 @@ The Atlas format is the format used by the Quantifying Gerrymandering Project's 
 | Version | Status | How a file says which version it is |
 |---|---|---|
 | **v1** | Every Atlas file written so far. Written by all versions of AtlasIO.jl. | No `formatVersion` in the header (or `"formatVersion":"1"`). |
-| **v2** | **Proposal under review** (decisions of 2026-11-23). No tool writes it yet. | `"formatVersion":"2"` in the header. |
+| **v2** | Specified 2026-11-23. Read by AtlasIO.jl 0.2.1 and later and by both Python readers from 0.2.1. No tool writes it yet. | `"formatVersion":"2"` in the header. |
 
 v1 and v2 differ only in how a map's district assignment is stored (see [District assignment](#district-assignment)). Everything else in this document applies to both.
 
@@ -82,7 +82,7 @@ An array with one single-key object per region. Each object's key is the region'
 "districting":[{"[\"WAKE\"]":3},{"[\"MECKLENBURG\", \"052\"]":13},{"[\"MECKLENBURG\", \"074\"]":14}]
 ```
 
-* The key string is a JSON array of strings. AtlasIO.jl writes it with `", "` between items and escapes only `"` and `\` inside names; other characters, including non-ASCII ones, are written as they are. Readers must decode the key string as a JSON array of strings, so other spacing and other JSON escapes (such as `Ñ`) are read correctly too.
+* The key string is a JSON array of strings. AtlasIO.jl writes it with `", "` between items and escapes only `"` and `\` inside names; other characters, including non-ASCII ones, are written as they are. Readers must decode the key string as a JSON array of strings, so other spacing and other JSON escapes (such as `\u00d1`) are read correctly too.
 * Names should not contain control characters (tab, newline, ...). A v1 key string holding one is not strictly valid JSON, and strict JSON parsers reject it.
 * The order of the entries carries no meaning.
 
@@ -135,7 +135,7 @@ v2:
 * **One version per file.** A file's header says which version every one of its maps uses.
 * **Readers should read both v1 and v2.** A missing `formatVersion` means v1. A reader that meets a `formatVersion` it does not know must stop with a clear error (e.g. "upgrade AtlasIO"), never guess.
 * **Converting is lossless** in both directions: every v2 file converts to v1, and every v1 file whose keys follow rule 1 converts to v2.
-* **Old readers on v2 files** fail safely instead of returning wrong data. In AtlasIO.jl 0.1.x and 0.2.x the header opens, `nextMap` raises `AtlasFormatError` (there is no `districting` field), and `nextMapData` and `skipMap`, which never look at the assignment, keep working. The current Python reader stops with `KeyError: 'districting'`.
+* **Old readers on v2 files** fail safely instead of returning wrong data. In AtlasIO.jl 0.1.x and 0.2.x the header opens, `nextMap` raises `AtlasFormatError` (there is no `districting` field), and `nextMapData` and `skipMap`, which never look at the assignment, keep working. The Python reader `AtlasIO.py` before 0.2.1 stops with `KeyError: 'districting'`.
 
 ## File Extension and Compression
 
@@ -150,7 +150,7 @@ The Bzip2 compression format typically results in a smaller file than the Gzip c
 
 ## Work Directly with Compressed Files
 
-One nice feature of the AtlasIO libraries is that they can read compressed files directly, and the Julia library can also write them. This both increases the speed of writing and decreases the size of the Atlas files significantly. (The Python reader currently reads `.jsonl` and `.jsonl.gz` files, but not `.jsonl.bz2`.)
+One nice feature of the AtlasIO libraries is that they can read compressed files directly, and the Julia library can also write them. This both increases the speed of writing and decreases the size of the Atlas files significantly. (The Python readers read `.jsonl`, `.jsonl.gz` and, from 0.2.1, `.jsonl.bz2` files.)
 
 ### Corrupted Compressed Files
 

@@ -53,11 +53,20 @@ jobs:
       - name: Read files written by this version with AtlasIO 0.1.5
         run: bash test/compat/run_compat_0_1_5.sh
 
+      - name: Old readers (AtlasIO 0.1.5 and 0.2.0) fail safely on v2 files
+        run: bash test/compat/run_v2_old_readers.sh
+
   python-test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.11', '3.12']
+        include:
+          - python-version: '3.9'
+            extras: ''
+          - python-version: '3.12'
+            extras: ''
+          - python-version: '3.13'
+            extras: 'orjson'      # atlasio's optional faster parser
 
     steps:
       - uses: actions/checkout@v4
@@ -66,8 +75,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install pytest
-        run: pip install pytest
+      # Installing ./python (not in editable mode) also checks that the atlasio package builds and installs.
+      - name: Install the atlasio package and the test tools
+        run: pip install pytest numpy ./python ${{ matrix.extras }}
 
       - name: Run tests
-        run: python -m pytest PythonReader -v
+        run: python -m pytest PythonReader python/tests -v
