@@ -9,6 +9,8 @@ import json
 import os
 import re
 
+from ._write import _assignment_json, _districting_v1, _version
+
 _FIELD = {"1": "districting", "2": "assignment"}
 
 
@@ -19,13 +21,6 @@ def _open_text(path, mode):
     if path.endswith(".bz2"):
         return bz2.open(path, mode + "t", encoding="utf-8", newline="\n")
     return open(path, mode, encoding="utf-8", newline="\n")
-
-
-def _version(v):
-    s = v if isinstance(v, str) else (str(v) if isinstance(v, int) and not isinstance(v, bool) else "")
-    if s not in ("1", "2"):
-        raise ValueError("format version must be 1 or 2 (or '1' or '2'), got %r" % (v,))
-    return s
 
 
 def convert(src, dst, to):
@@ -131,7 +126,7 @@ def _edit_header_version(line, had, to):
 
 
 def _convert_map_line(line, frm, to, lineno):
-    from . import AtlasFormatError, _from_assignment, _from_v1, district_key_string
+    from . import AtlasFormatError, _from_assignment, _from_v1
     if frm == to:
         return line + "\n"
     try:
@@ -160,44 +155,10 @@ def _convert_map_line(line, frm, to, lineno):
         raise AtlasFormatError('%s: the assignment ("%s") must be the map line\'s last field, as atlas_format.md '
                                "requires; convert only rewrites that field" % (where, field))
     if to == "2":
-        new = '"assignment":' + _assignment_json(d, where)
+        new = '"assignment":' + _assignment_json(d, "%s: cannot convert to v2: " % where)
     else:
-        new = '"districting":[' + ",".join(
-            "{%s:%d}" % (json.dumps(district_key_string(k), ensure_ascii=False), d[k]) for k in sorted(d)) + "]"
+        new = '"districting":' + _districting_v1(d)
     return line[:start] + new + "}\n"
-
-
-def _assignment_json(d, where):
-    """The v2 tree for districting ``d`` ({key tuple: district}), names sorted at every level."""
-    from . import AtlasFormatError
-    tree = {}
-    for k, v in d.items():
-        if not k:
-            raise AtlasFormatError("%s: cannot convert to v2: the district key () is empty" % where)
-        node = tree
-        for i, part in enumerate(k[:-1]):
-            child = node.setdefault(part, {})
-            if not isinstance(child, dict):
-                _prefix_error(where, k[:i + 1], k)
-            node = child
-        if k[-1] in node:
-            _prefix_error(where, k, _some_key_under(k, node[k[-1]]))
-        node[k[-1]] = v
-    # sort_keys sorts by code point, the UTF-8 byte order the spec asks for
-    return json.dumps(tree, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-
-
-def _some_key_under(prefix, node):
-    while isinstance(node, dict):
-        name = min(node)
-        prefix, node = prefix + (name,), node[name]
-    return prefix
-
-
-def _prefix_error(where, short, long):
-    from . import AtlasFormatError
-    raise AtlasFormatError("%s: cannot convert to v2: the key %r is a prefix of the key %r, so the region would "
-                           "be both whole and split (rule 1 of atlas_format.md)" % (where, tuple(short), tuple(long)))
 
 
 def _last_top_level_key_start(s):

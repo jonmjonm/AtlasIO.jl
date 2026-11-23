@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.2.3]
+
+The Python `atlasio` package **writes Atlas files**. AtlasIO.jl is unchanged.
+
+### Added
+
+- **Python:** `atlasio.new_atlas(dest, ...)` creates an atlas and returns an `AtlasWriter`. It has
+  `add_map(name, districting, weight, data)` (or `add_map(m)` for a `Map`), `add_maps` and `close`, and works in
+  a `with` block. It writes format v1 by default, as AtlasIO.jl does, or v2 with `format_version=2`. Plain,
+  `.gz` or `.bz2` is chosen by extension; an open file object also works. `like=atlas` copies an existing
+  atlas's header and parameters. `atlasio.map_json(m, format_version)` gives one map's line.
+- The files are laid out as AtlasIO.jl writes them: the same banner, header fields and order, and map field
+  order. v2 assignments are byte-identical to Julia's; floats may be spelled differently (`1e-07` for
+  `1.0e-7`). AtlasIO.jl reads them back with the same districtings and data.
+- Input is checked before anything is written, so a bad map never leaves a partial line. District keys must be
+  tuples of strings and districts integers. NaN and infinity are refused. numpy numbers and arrays are
+  converted. In v2, a region both whole and split raises `AtlasFormatError`.
+- Tests: rewriting every fixture in both versions keeps every map, header field and parameter; header lines and
+  v2 assignments match AtlasIO.jl's byte for byte; error cases.
+
+### Changed
+
+- `convert` now uses the writer's encoders (same output).
+- Docs pin httpimport and pip installs to the `v0.2.3` tag.
+
 ## [0.2.2]
 
 AtlasIO can **write format v2** when asked, and **convert** files between v1 and v2, in Julia and in Python.

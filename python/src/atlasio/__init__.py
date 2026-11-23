@@ -1,9 +1,9 @@
-"""atlasio: read Atlas files (redistricting map ensembles) in Python, and convert them between format versions.
+"""atlasio: read and write Atlas files (redistricting map ensembles) in Python, and convert between format versions.
 
 An Atlas file holds one header and then one district map per line; the format is described in
-https://github.com/jonmjonm/AtlasIO.jl/blob/main/atlas_format.md. This package reads format versions 1 and 2,
-plain or compressed (.gz, .bz2), and converts files between the two versions (``convert``, or
-``python -m atlasio convert SRC DST --to 2`` on the command line). AtlasIO.jl (Julia) writes Atlas files.
+https://github.com/jonmjonm/AtlasIO.jl/blob/main/atlas_format.md. This package reads and writes format versions 1
+and 2, plain or compressed (.gz, .bz2), and converts files between the two versions (``convert``, or
+``python -m atlasio convert SRC DST --to 2`` on the command line).
 
     import atlasio
 
@@ -12,6 +12,9 @@ plain or compressed (.gz, .bz2), and converts files between the two versions (``
         for m in atlas:
             m.name, m.weight, m.data
             m.districting[("MECKLENBURG", "052")]   # district keys are tuples, as in AtlasIO.jl
+
+    with atlasio.new_atlas("out.jsonl.gz", description="my ensemble", params={"districts": 14}) as out:
+        out.add_map("map1", {("WAKE",): 3, ("MECKLENBURG", "052"): 13}, weight=1, data={"score": 0.5})
 
 Only the standard library is needed. If the optional ``orjson`` package is installed it is used to parse
 lines faster (any line orjson refuses, such as one with NaN, falls back to the standard json module).
@@ -22,12 +25,13 @@ import json
 import os
 import re
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 
 __all__ = ["open_atlas", "Atlas", "Map", "AtlasFormatError", "parse_map", "parse_district_key",
-           "district_key_string", "convert", "FORMAT_VERSIONS", "__version__"]
+           "district_key_string", "new_atlas", "AtlasWriter", "map_json", "convert", "FORMAT_VERSIONS",
+           "__version__"]
 
-#: The Atlas format versions this package reads.
+#: The Atlas format versions this package reads and writes.
 FORMAT_VERSIONS = ("1", "2")
 
 _REQUIRED_HEADER = ("description", "date", "atlasParamType", "mapParamType")
@@ -258,4 +262,5 @@ def district_key_string(key):
     return "[" + ", ".join('"' + p.replace("\\", "\\\\").replace('"', '\\"') + '"' for p in key) + "]"
 
 
-from ._convert import convert  # noqa: E402  (after the definitions it uses)
+from ._write import AtlasWriter, map_json, new_atlas  # noqa: E402  (after the definitions they use)
+from ._convert import convert  # noqa: E402

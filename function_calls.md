@@ -9,7 +9,7 @@ The **Julia** library is the full read/write implementation. It reads format
 versions 1 and 2 (see [atlas_format.md](atlas_format.md)) and writes either
 (v1 by default; `formatVersion=2` on the write functions), and `convertAtlas`
 converts files between them. The **Python** side has the `atlasio` package
-(`python/`), which reads both versions and converts files between them, and the
+(`python/`), which reads and writes both versions and converts files between them, and the
 original read-only `PythonReader/AtlasIO.py`, plus election-analysis helpers.
 
 ---
@@ -355,9 +355,9 @@ close(out)
 
 ## Python: the `atlasio` package (`python/`)
 
-Reads format v1 and v2, plain, `.gz` or `.bz2`, and converts files between them. Standard library only (uses
+Reads and writes format v1 and v2, plain, `.gz` or `.bz2`, and converts files between them. Standard library only (uses
 `orjson` if it is installed). Install with
-`pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.2#subdirectory=python"`.
+`pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.3#subdirectory=python"`.
 
 ```python
 import atlasio
@@ -380,13 +380,27 @@ with atlasio.open_atlas("atlas.jsonl.gz") as atlas:
 - `convert(src, dst, to)` — copy an atlas file converting every map to format version `to` (1 or 2); the same
   rules and the same output bytes as Julia's `convertAtlas`. Returns the number of maps. *(New in 0.2.2.)*
   Command line: `python -m atlasio convert SRC DST --to 2` (or `atlasio convert ...` once installed).
+- `new_atlas(dest, description="", params={}, *, date=None, atlas_param_type=None, map_param_type=None,
+  weight_type=None, format_version=None, like=None)` — create an atlas file (path, compression chosen by
+  extension, or an open text or binary file object, left open on `close`) and write its header. Defaults: the
+  current date, `"Dict{String, Any}"` for both parameter types, weight type `"Int64"`, format version 1.
+  `like=atlas` copies an open `Atlas`'s header, parameters and format version; explicit arguments override it.
+  Returns an `AtlasWriter`. *(New in 0.2.3.)*
+- `AtlasWriter` — `add_map(name, districting, weight=1, data=None)` or `add_map(m)` for a `Map`;
+  `add_maps(maps)`; `close()`; usable in a `with` block. Attributes `format_version`, `weight_type`, `header`,
+  `params`, `count` (maps written). The layout is AtlasIO.jl's: name, weight, data, then the assignment; v2 trees
+  sorted at every level, v1 entries in sorted key order. Bad input raises `TypeError`/`ValueError` before
+  anything is written (numpy numbers and arrays are converted; NaN and infinity are refused); in v2, a
+  districting v2 cannot hold raises `AtlasFormatError`. *(New in 0.2.3.)*
+- `map_json(m, format_version=1, weight_type=None)` — one map's line, without the newline, as `add_map` writes
+  it. *(New in 0.2.3.)*
 - `AtlasFormatError` (a `ValueError`) — raised for invalid files and lines, for a `formatVersion` it does not
   know, and for a map line whose version differs from the header's.
 
 ## Python Reader Library (`PythonReader/`)
 
 Read-only. Import by adding `../PythonReader/` to `sys.path`, or with httpimport pinned to a release tag
-(`.../AtlasIO.jl/refs/tags/v0.2.2/PythonReader/`). It is one self-contained file, kept so existing code keeps
+(`.../AtlasIO.jl/refs/tags/v0.2.3/PythonReader/`). It is one self-contained file, kept so existing code keeps
 working; new code can use the `atlasio` package above.
 
 ### `AtlasIO.py`

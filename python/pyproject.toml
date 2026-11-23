@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "AtlasIO"
-version = "0.2.2"
-description = "Read Atlas files (ensembles of redistricting maps), format versions 1 and 2, and convert between them"
+version = "0.2.3"
+description = "Read and write Atlas files (ensembles of redistricting maps), format versions 1 and 2, and convert between them"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }

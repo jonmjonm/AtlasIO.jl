@@ -9,7 +9,7 @@ The Atlas format is the format used by the Quantifying Gerrymandering Project's 
 | Version | Status | How a file says which version it is |
 |---|---|---|
 | **v1** | Every Atlas file written so far. Written by all versions of AtlasIO.jl. | No `formatVersion` in the header (or `"formatVersion":"1"`). |
-| **v2** | Specified 2026-11-23. Read by AtlasIO.jl 0.2.1 and later and by both Python readers from 0.2.1. Written by AtlasIO.jl 0.2.2 and later when asked (`formatVersion=2`; v1 stays the default). AtlasIO.jl's `convertAtlas` and the Python `atlasio.convert` convert files both ways. | `"formatVersion":"2"` in the header. |
+| **v2** | Specified 2026-11-23. Read by AtlasIO.jl 0.2.1 and later and by both Python readers from 0.2.1. Written by AtlasIO.jl 0.2.2 and later when asked (`formatVersion=2`; v1 stays the default), and by the Python `atlasio` package from 0.2.3 (`format_version=2`; v1 is its default too). AtlasIO.jl's `convertAtlas` and the Python `atlasio.convert` convert files both ways. | `"formatVersion":"2"` in the header. |
 
 v1 and v2 differ only in how a map's district assignment is stored (see [District assignment](#district-assignment)). Everything else in this document applies to both.
 
