@@ -11,7 +11,7 @@ From a release tag of the AtlasIO.jl repository (needs git):
 
     pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.1#subdirectory=python"
 
-It needs only the Python standard library (3.9 or later). With `pip install orjson` (or the `fast` extra) it
+It needs only the Python standard library (Python 3.9 or later; tested on 3.11 to 3.14). With `pip install orjson` (or the `fast` extra) it
 parses lines faster.
 
 ## Use
