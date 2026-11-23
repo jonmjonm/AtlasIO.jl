@@ -777,3 +777,6 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
     end
 
 end
+
+# Frozen v1-format fixtures, byte-format pins and a randomized round trip (see test/fixtures/README.md).
+include("v1_fixtures.jl")

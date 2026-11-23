@@ -52,4 +52,4 @@ jobs:
         run: pip install pytest
 
       - name: Run tests
-        run: python -m pytest PythonReader/test_AtlasIO.py -v
+        run: python -m pytest PythonReader -v

@@ -1,0 +1,7 @@
+"This is an Atlas for Redistricting Maps. See 'https://github.com/jonmjonm/AtlasIO.jl/blob/main/atlas_format.md' for more information about the format."
+{"description":"v1 edge-case fixture","date":"2026-11-22T00:00:00","atlasParamType":"Dict{String, Any}","mapParamType":"Dict{String, Any}","weightType":"Int64"}
+{"pi":3.141592653589793,"levels in graph":["county","prec_id"],"districts":14,"gamma":0.0,"nested":{"a":[1.0,2.0],"b":"é"}}
+{"name":"ünïcødé \"quoted\" \\ back/slash, comma [br] {brace}","weight":3,"data":{"floats":[0.1,1.0e-7,1.0e20,1.0e300,5.0e-324,-0.0,1.0,1.23456789e8,2.5e15,0.0],"bool":true,"empty":{},"nested":{"deeper":{"y":0.5},"x":[1,"two",3.0,[]]},"ints":[9223372036854775807,-9223372036854775808,0,-1],"null":null,"emptylist":[],"text":"line1\nline2\ttabbed \"q\" é"},"districting":[{"[\"p3\", \"c7\", \"b100\"]":5},{"[\"é\"]":2},{"[\"x, y\"]":3},{"[\"[br]\"]":4},{"[\"it's\"]":7},{"[\"a\\\"b\", \"c\\\\d\"]":1},{"[\"中文\", \"😀\"]":6}]}
+{"name":"empty districting","weight":1,"data":{"k":"v"},"districting":[]}
+{"name":"single","weight":7,"data":{},"districting":[{"[\"37011\"]":14}]}
+{"name":"weight zero","weight":0,"data":{"energy weights":[1.0,0.5],"gamma":0.0},"districting":[{"[\"A\"]":1},{"[\"B\", \"p1\"]":2},{"[\"B\", \"p2\"]":1}]}

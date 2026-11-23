@@ -1,0 +1,7 @@
+"This is an Atlas for Redistricting Maps. See 'https://github.com/jonmjonm/AtlasIO.jl/blob/main/atlas_format.md' for more information about the format."
+{"description":"v1 float-weight fixture","date":"2026-11-22T00:00:00","atlasParamType":"Dict{String, Any}","mapParamType":"Dict{String, Any}","weightType":"Float64"}
+{}
+{"name":"half","weight":0.5,"data":{"x":1},"districting":[{"[\"A\"]":1}]}
+{"name":"whole float","weight":2.0,"data":{},"districting":[{"[\"A\"]":2}]}
+{"name":"tiny","weight":1.0e-300,"data":{},"districting":[{"[\"A\"]":1},{"[\"B\"]":2}]}
+{"name":"third","weight":0.3333333333333333,"data":{"w":0.0},"districting":[{"[\"B\", \"p1\"]":3}]}
