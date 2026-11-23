@@ -72,6 +72,8 @@ The assignment comes **last** on purpose: a reader that only needs `name`, `weig
 
 A map assigns every region of the state to a district. Regions are hierarchical in a **multiscale** atlas: a county that is kept whole is assigned as a single region, and a county that is split is assigned precinct by precinct. A region is identified by a **key**, its path down the hierarchy, e.g. `("WAKE",)` or `("MECKLENBURG", "052")`. District numbers are integers.
 
+The hierarchy may have any number of levels (for example county → town → precinct), and different regions may stop at different depths: in one map a county can be kept whole while another is split into towns, some of which are split again into precincts. Both versions allow this.
+
 ### v1: `districting`
 
 An array with one single-key object per region. Each object's key is the region's key written as a JSON-style list of strings, and its value is the district:
@@ -96,6 +98,14 @@ A nested JSON object (a tree). At each level, each key is a region's name at tha
 ```
 
 This is the same assignment as the v1 example above: the path from the top of the tree to each leaf is that region's key.
+
+With three levels (`"levels in graph": ["county", "mcd", "prec_id"]`), a map in which Wake County is kept whole, Mecklenburg is split into towns, and the town of Charlotte is split again into precincts looks like this:
+
+```json
+"assignment":{"MECKLENBURG":{"CHARLOTTE":{"052":13,"074":14},"DAVIDSON":12},"WAKE":3}
+```
+
+Its keys are `("WAKE",)`, `("MECKLENBURG", "DAVIDSON")`, `("MECKLENBURG", "CHARLOTTE", "052")` and `("MECKLENBURG", "CHARLOTTE", "074")`.
 
 Rules:
 
