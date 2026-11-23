@@ -1,6 +1,6 @@
 module AtlasIO
 
-using StructTypes, JSON3, Dates
+using JSON, Dates
 using TranscodingStreams, CodecBzip2, CodecZlib
 using Downloads
 
@@ -27,6 +27,9 @@ export Map,
     parseBufferToMap,
     parseBufferToMapData,
     parseMapData,
+    parseMap,
+    mapJSON,
+    mapBytes,
     AtlasOutput,
     openAtlasOutput,
     writeMaps!,
@@ -42,9 +45,8 @@ struct AtlasHeader
     date::String
     atlasParamType::String
     mapParamType::String
-    weightType::String #currently unused
+    weightType::String
 end
-StructTypes.StructType(::Type{AtlasHeader}) = StructTypes.Struct()
 
 AtlasHeader(name::String,date::String,atlasParamType::DataType,mapParamType::DataType; weightType::DataType=Int64)=AtlasHeader(name,date,string(atlasParamType),string(mapParamType),string(weightType))
 AtlasHeader(name::String,atlasParamType::DataType,mapParamType::DataType; weightType::DataType=Int64)=AtlasHeader(name,string(now()),string(atlasParamType),string(mapParamType),string(weightType))
@@ -72,6 +74,15 @@ Base.@kwdef struct Map{T,W<: Real} # T is the data type of the Data about them m
     data::T
 end
 
+"""
+    parseDistrictKey(s) -> Tuple{Vararg{String}}
+
+Decode a v1 district-key string such as `["MECKLENBURG", "052"]` into `("MECKLENBURG", "052")`.
+
+The fast path handles the escapes AtlasIO itself writes (`\\"` and `\\\\`). A key containing any other
+JSON escape -- e.g. `\\u00e9`, as Python's `json.dumps` writes non-ASCII characters by default, or `\\t` --
+is decoded by a full JSON parse instead (AtlasIO 0.1.x dropped the backslash and mis-decoded these).
+"""
 function parseDistrictKey(s::AbstractString)
     toks=String[]
     cu=codeunits(s)
@@ -81,7 +92,10 @@ function parseDistrictKey(s::AbstractString)
             i+=1
             buf=IOBuffer()
             while i<=n && cu[i]!=UInt8('"')
-                (cu[i]==UInt8('\\') && i<n) && (i+=1)
+                if cu[i]==UInt8('\\') && i<n
+                    i+=1
+                    (cu[i]==UInt8('"') || cu[i]==UInt8('\\')) || return _parseDistrictKeyJSON(s)
+                end
                 write(buf,cu[i]); i+=1
             end
             push!(toks,String(take!(buf)))
@@ -90,6 +104,9 @@ function parseDistrictKey(s::AbstractString)
     end
     return Tuple(toks)
 end
+
+"Slow path of `parseDistrictKey`: decode the key string as a JSON array of strings."
+_parseDistrictKeyJSON(s::AbstractString) = Tuple(String.(JSON.parse(s, Vector{String})))
 
 function Map{T,W}(x::Dict{String, Any}) where {T<:Any, W<:Real}
     dict=Dict{Tuple{Vararg{String}}, Int64}()
@@ -105,8 +122,6 @@ end
 # the weight type W is inferred from the supplied weight (defaults to Int64-style ints).
 Map{T}(; name, districting, weight, data) where T = Map{T,typeof(weight)}(name, districting, weight, data)
 Map{T}(name, districting, weight, data) where T = Map{T,typeof(weight)}(name, districting, weight, data)
-
-StructTypes.StructType(::Type{<:Map}) = StructTypes.CustomStruct()
 
 function districtKeyString(k)
     buf=IOBuffer()
@@ -125,14 +140,144 @@ function districtKeyString(k)
     return String(take!(buf))
 end
 
-StructTypes.lower(x::Map{T,W} where {T, W<:Real}) = (name=x.name, weight=x.weight, data=x.data, districting=[districtKeyString(k) => v for (k, v) in x.districting])
+"""
+    districtingJSON(d::Districting) -> JSON.JSONText
+
+The v1 on-disk districting: a JSON array of single-key objects, `[{"[\\"k1\\", \\"k2\\"]":v}, ...]`.
+It is rendered by hand because JSON.jl would write a `Vector{Pair}` as ONE object, not one object per entry.
+
+Each key is written in a single pass that applies both escaping levels at once (the key-tuple string and
+the JSON string around it). The output is byte-identical to `_districtingJSONReference`, which builds each
+key with `districtKeyString` and then JSON-escapes it; a name containing a control character or DEL (which
+JSON.jl writes as `\\uXXXX`) goes through that reference path.
+"""
+function districtingJSON(d::Districting)
+    buf = IOBuffer(sizehint = 32 * length(d) + 2)
+    write(buf, UInt8('['))
+    first = true
+    for (k, v) in d
+        first ? (first = false) : write(buf, UInt8(','))
+        write(buf, UInt8('{'))
+        _writeDistrictKey!(buf, k) || JSON.json(buf, districtKeyString(k))
+        write(buf, UInt8(':'))
+        _writeSmallInt!(buf, v)
+        write(buf, UInt8('}'))
+    end
+    write(buf, UInt8(']'))
+    return JSON.JSONText(String(take!(buf)))
+end
+
+"""
+Write district key `k` as the JSON string of its v1 key string, e.g. `("a\\"b", "c")` as
+`"[\\"a\\\\\\"b\\", \\"c\\"]"`, in one pass. Returns `false`, having written nothing, if a name contains a
+control character or DEL; the caller then uses the reference path.
+"""
+function _writeDistrictKey!(buf::IOBuffer, k)::Bool
+    special = false                           # any '"' or '\\' (each needs a 4-byte escape)
+    for s in k, c in codeunits(s)
+        (c < 0x20 || c == 0x7f) && return false
+        special |= (c == UInt8('"')) | (c == UInt8('\\'))
+    end
+    write(buf, UInt8('"'), UInt8('['))
+    first = true
+    for s in k
+        first ? (first = false) : write(buf, UInt8(','), UInt8(' '))
+        write(buf, UInt8('\\'), UInt8('"'))
+        if special
+            for c in codeunits(s)
+                if c == UInt8('"')                 # inner \"  ->  JSON \\\"
+                    write(buf, UInt8('\\'), UInt8('\\'), UInt8('\\'), UInt8('"'))
+                elseif c == UInt8('\\')            # inner \\  ->  JSON \\\\
+                    write(buf, UInt8('\\'), UInt8('\\'), UInt8('\\'), UInt8('\\'))
+                else
+                    write(buf, c)
+                end
+            end
+        else
+            write(buf, s)                          # common case: copy the name as-is
+        end
+        write(buf, UInt8('\\'), UInt8('"'))
+    end
+    write(buf, UInt8(']'), UInt8('"'))
+    return true
+end
+
+"Write integer `v` in decimal; districts are small, so 0–999 skip `print`'s allocation."
+@inline function _writeSmallInt!(buf::IOBuffer, v::Integer)
+    if 0 <= v < 10
+        write(buf, UInt8('0') + UInt8(v))
+    elseif 10 <= v < 100
+        write(buf, UInt8('0') + UInt8(div(v, 10)), UInt8('0') + UInt8(rem(v, 10)))
+    elseif 100 <= v < 1000
+        write(buf, UInt8('0') + UInt8(div(v, 100)), UInt8('0') + UInt8(rem(div(v, 10), 10)),
+              UInt8('0') + UInt8(rem(v, 10)))
+    else
+        print(buf, v)
+    end
+    return nothing
+end
+
+"Reference (slower, two-pass) districting writer; `districtingJSON` must produce the same bytes."
+function _districtingJSONReference(d::Districting)
+    buf = IOBuffer()
+    write(buf, '[')
+    first = true
+    for (k, v) in d
+        first ? (first = false) : write(buf, ',')
+        write(buf, '{')
+        JSON.json(buf, districtKeyString(k))
+        write(buf, ':')
+        print(buf, v)
+        write(buf, '}')
+    end
+    write(buf, ']')
+    return JSON.JSONText(String(take!(buf)))
+end
+
+# Map's on-disk form: field order name, weight, data, districting (the lazy MapData reader relies on
+# districting coming last).
+JSON.lower(x::Map) = (name=x.name, weight=x.weight, data=x.data, districting=districtingJSON(x.districting))
+
+"""
+    AtlasStyle <: JSON.JSONStyle
+
+AtlasIO's JSON settings. Writing goes through this style so that value types AtlasIO 0.1.x (JSON3) wrote
+in a particular way keep that on-disk form, without changing how those types are written by JSON.jl for
+everyone else (no type piracy).
+"""
+struct AtlasStyle <: JSON.JSONStyle end
+JSON.lower(::AtlasStyle, x::Rational) = float(x)      # 0.1.x wrote 1//3 as 0.3333333333333333
+# 0.1.x wrote a BigFloat with all its digits (string(x)); some JSON.jl versions write the shortest form.
+JSON.lower(::AtlasStyle, x::BigFloat) = isfinite(x) ? JSON.JSONText(string(x)) : x
+# 0.1.x wrote DateTime/Time with Dates' ISO formats, which always show the fraction ("…T01:02:03.0");
+# JSON.jl's default drops a zero fraction ("…T01:02:03").
+const _TIME_FORMAT = dateformat"HH:MM:SS.s"
+JSON.lower(::AtlasStyle, x::DateTime) = Dates.format(x, Dates.ISODateTimeFormat)
+JSON.lower(::AtlasStyle, x::Time) = Dates.format(x, _TIME_FORMAT)
+# 0.1.x wrote arrays of 2+ dimensions flattened in column-major order ([1 2; 3 4] -> [1,3,2,4]);
+# JSON.jl's default writes them nested.
+JSON.lower(::AtlasStyle, x::AbstractArray) = vec(x)
+# Vectors keep JSON.jl's own handling (this method only resolves the dispatch ambiguity with JSON's).
+JSON.lower(st::AtlasStyle, x::AbstractVector) = invoke(JSON.lower, Tuple{JSON.JSONStyle, AbstractVector}, st, x)
+
+const ATLAS_STYLE = AtlasStyle()
+
+# All JSON output goes through these. `sort_keys=false` keeps Dict keys in iteration order, as 0.1.x did
+# (JSON.jl sorts plain Dict keys by default).
+_json(x) = JSON.json(x; style=ATLAS_STYLE, sort_keys=false)
+_json(io::IO, x) = JSON.json(io, x; style=ATLAS_STYLE, sort_keys=false)
+
+# All JSON input goes through this: every object becomes a Dict{String,Any} at every level (JSON.jl's
+# default is its order-preserving JSON.Object), every array a Vector{Any}, and numbers keep their type
+# exactly (0.0 stays Float64, integers beyond 2^53 stay exact).
+_parse(s) = JSON.parse(s; dicttype=Dict{String,Any})
 
 function newAtlas(io::IO, atlasHeader::AtlasHeader, atlasParam)
-    JSON3.write(io,"This is an Atlas for Redistricting Maps. See 'https://github.com/jonmjonm/AtlasIO.jl/blob/main/atlas_format.md' for more information about the format.")
+    _json(io,"This is an Atlas for Redistricting Maps. See 'https://github.com/jonmjonm/AtlasIO.jl/blob/main/atlas_format.md' for more information about the format.")
     write(io,"\n")
-    JSON3.write(io,atlasHeader)
+    _json(io,atlasHeader)
     write(io,"\n")
-    JSON3.write(io,atlasParam)
+    _json(io,atlasParam)
     write(io,"\n")
 end
 
@@ -170,7 +315,7 @@ function openAtlas(io::IO)::Atlas
     headerLine = _readlineOrFormatError(io, "the header line (line 2)")
     local atlasHeaderDict
     try
-        atlasHeaderDict = JSON3.read(headerLine, Dict{String,String})
+        atlasHeaderDict = JSON.parse(headerLine, Dict{String,String})
     catch e
         throw(AtlasFormatError("not a valid Atlas file: the header line (line 2) " *
                                "did not parse as JSON ($(sprint(showerror, e)))."))
@@ -199,7 +344,7 @@ function openAtlas(io::IO)::Atlas
     paramLine = _readlineOrFormatError(io, "the atlas-parameters line (line 3)")
     local atlasParam
     try
-        atlasParam = JSON3.read(paramLine, atlas_ParamType)
+        atlasParam = atlas_ParamType(_parse(paramLine))
     catch e
         throw(AtlasFormatError("not a valid Atlas file: the atlas-parameters line " *
                                "(line 3) did not parse as JSON ($(sprint(showerror, e)))."))
@@ -210,17 +355,28 @@ function openAtlas(io::IO)::Atlas
     return atlas
 end
     
-"Parse `buff` as a `Map` line, wrapping any JSON/decoding failure as an
-`AtlasFormatError` (a malformed line or a corrupt mid-file stream) instead of
-letting a raw JSON3 error escape."
-function _parseMapLine(atlas::Atlas, buff::String)::Map
+"""
+    parseMap(line, T, W=Int64) -> Map{T,W}
+
+Parse one Atlas map line (the JSON text of a single map, with or without its trailing newline) into a
+`Map{T,W}`: `T` is the type of the map's `data`, `W` the weight type. Any JSON or decoding failure is
+raised as an [`AtlasFormatError`](@ref).
+
+This is the way to parse map lines you have read yourself (e.g. to parse them in parallel), without
+needing any JSON library: use it instead of `JSON3.read(line, Map{T,W})`, which no longer works since
+AtlasIO 0.2. [`parseBufferToMap`](@ref) does the same with the types taken from an open `Atlas`.
+"""
+function parseMap(line::AbstractString, ::Type{T}, ::Type{W}=Int64) where {T, W<:Real}
     try
-        return JSON3.read(buff,Map{atlas.mapParamType,atlas.weightType})
+        return Map{T,W}(_parse(line))
     catch e
         throw(AtlasFormatError("not a valid Atlas map line: failed to parse as JSON " *
                                "($(sprint(showerror, e)))."))
     end
 end
+
+"Parse `buff` as a `Map` line of `atlas`, raising any failure as an `AtlasFormatError`."
+_parseMapLine(atlas::Atlas, buff::AbstractString)::Map = parseMap(buff, atlas.mapParamType, atlas.weightType)
 
 function nextMap(atlas::Atlas)::Map
     eof(atlas.io) && throw(EOFError())
@@ -322,28 +478,21 @@ end
     parseMapData(buff, T, W=Int64) -> MapData{T,W}
 
 Parse a map line `buff` into a [`MapData`](@ref): only `name`, `weight`, and
-`data` are touched. `districting` is never materialized -- this is JSON3's plain
-lazy-object read plus three field lookups, not the `StructTypes.CustomStruct`
-machinery `Map`'s parse goes through (which eagerly materializes the entire JSON
-object, `districting` included, regardless of what the constructor it dispatches
-to actually uses). Wraps a parse failure as an `AtlasFormatError`, matching
-`Map`'s parse (`_parseMapLine`).
+`data` are touched. `districting` is never materialized, nor even scanned: the line
+is read with JSON.jl's lazy parser, and `districting` is the last field of a map
+line, so the three lookups stop before reaching it. Wraps a parse failure as an
+`AtlasFormatError`, matching [`parseMap`](@ref).
 
-`Map{T,W}` places no constraint on `T` beyond "constructible from whatever `data`
-parsed to" -- `data` need not be a JSON object. `T <: AbstractDict` gets the fast,
-allocation-light conversion (remapping JSON3's `Symbol` keys to `String`, since
-e.g. `Dict{String,Any}` can't be built directly from a `Symbol`-keyed source);
-any other `T` is simply constructed from the raw (lazily-parsed) value, exactly
-as `Map`'s parse does via `T(x["data"])`, so a non-`Dict` `mapParamType` -- or
-`data` that isn't an object -- works the same as it does for a full `Map`.
+`data` is converted exactly as [`parseMap`](@ref) does, `T(data)` with objects as
+`Dict{String,Any}` and arrays as `Vector{Any}` at every level, so a `MapData` and
+a `Map` parsed from the same line hold equal data. `T` need not be a `Dict`, and
+`data` need not be a JSON object.
 """
-function parseMapData(buff::String, ::Type{T}, ::Type{W}=Int64) where {T,W<:Real}
+function parseMapData(buff::AbstractString, ::Type{T}, ::Type{W}=Int64) where {T,W<:Real}
     try
-        obj = JSON3.read(buff)
-        rawData = obj["data"]
-        dataVal = T <: AbstractDict ? T(string(k) => v for (k, v) in pairs(rawData)) :
-                                      T(rawData)
-        return MapData{T,W}(String(obj["name"]), W(obj["weight"]), dataVal)
+        obj = JSON.lazy(buff)
+        dataVal = T(_parse(obj.data))
+        return MapData{T,W}(String(obj.name[]), W(obj.weight[]), dataVal)
     catch e
         throw(AtlasFormatError("not a valid Atlas map line: failed to parse as JSON " *
                                "($(sprint(showerror, e)))."))
@@ -380,9 +529,29 @@ function parseBufferToMapData(atlas::Atlas, buff::String)::MapData
     return parseMapData(buff, atlas.mapParamType, atlas.weightType)
 end
 
+"""
+    mapJSON(m::Map) -> String
+
+The JSON text of map `m` exactly as it appears on one line of an Atlas file, WITHOUT the trailing
+newline. Use [`mapBytes`](@ref) for a complete line ready to write.
+"""
+mapJSON(m::Map) = _json(m)
+
+"""
+    mapBytes(m::Map) -> Vector{UInt8}
+
+One complete Atlas map line for `m`, INCLUDING the trailing `"\\n"`: exactly the bytes `addMap` writes.
+Use it to build the input of [`writeMaps!`](@ref), e.g. `writeMaps!(out, mapBytes.(maps))`.
+"""
+function mapBytes(m::Map)
+    io = IOBuffer()
+    _json(io, m)
+    write(io, '\n')
+    return take!(io)
+end
+
 function addMap(io::IO,map::Map{T}) where T
-    buff=JSON3.write(map)
-    write(io,buff)+write(io,"\n")
+    write(io, mapBytes(map))
 end
 
 function addMap(io::IO,dist::Districting,name::String,w::Real,mapParams)
@@ -402,13 +571,13 @@ single thread it runs serially with negligible overhead.
 """
 function addMaps(io::IO, maps)
     ms = collect(maps)                       # ensure 1-based, indexable
-    strs = Vector{String}(undef, length(ms))
+    lines = Vector{Vector{UInt8}}(undef, length(ms))
     Threads.@threads for i in eachindex(ms)
-        @inbounds strs[i] = JSON3.write(ms[i])
+        @inbounds lines[i] = mapBytes(ms[i])
     end
     nb = 0
     @inbounds for i in eachindex(ms)
-        nb += write(io, strs[i]) + write(io, "\n")
+        nb += write(io, lines[i])
     end
     return nb
 end

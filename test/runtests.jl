@@ -1,6 +1,5 @@
 using Test
 using AtlasIO
-using JSON3                        # for comparing parseMapData against a direct Map parse
 using CodecZlib: GzipDecompressor   # for verifying the parallel-gzip writer's output
 using Sockets
 using Downloads
@@ -170,7 +169,7 @@ const second_map_truth = Dict{Tuple{Vararg{String}}, Int64}(
 
     @testset "parseMapData matches Map's parse for a non-Dict, non-object data/T (Map places no such constraint)" begin
         line = """{"name":"m1","weight":1,"data":42,"districting":[{"[\\"a\\"]":1}]}"""
-        m = JSON3.read(line, Map{Int64,Int64})
+        m = parseMap(line, Int64, Int64)
         md = parseMapData(line, Int64, Int64)
         @test md.name == m.name == "m1"
         @test md.weight == m.weight == 1
@@ -780,3 +779,6 @@ end
 
 # Frozen v1-format fixtures, byte-format pins and a randomized round trip (see test/fixtures/README.md).
 include("v1_fixtures.jl")
+
+# AtlasIO 0.2: value types on write/read and the new public API (uses helpers from v1_fixtures.jl).
+include("types_and_api.jl")
