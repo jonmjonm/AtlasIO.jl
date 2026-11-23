@@ -1,16 +1,25 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "AtlasIO"
-version = "0.2.3"
+dynamic = ["version"]   # from atlasio.__version__ (src/atlasio/__init__.py), kept equal to AtlasIO.jl's version
 description = "Read and write Atlas files (ensembles of redistricting maps), format versions 1 and 2, and convert between them"
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]   # a copy of the repository's LICENSE (CI checks they match)
+authors = [
+    { name = "Jonathan Mattingly", email = "jonathan.mattingly@duke.edu" },
+    { name = "Gregory Herschlag", email = "Gregory.Herschlag@duke.edu" },
+]
+keywords = ["redistricting", "gerrymandering", "districting", "ensemble", "atlas"]
 dependencies = []
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
 ]
@@ -25,6 +34,10 @@ test = ["pytest"]
 [project.urls]
 Homepage = "https://github.com/jonmjonm/AtlasIO.jl"
 Format = "https://github.com/jonmjonm/AtlasIO.jl/blob/main/atlas_format.md"
+Changelog = "https://github.com/jonmjonm/AtlasIO.jl/blob/main/CHANGELOG.md"
+
+[tool.setuptools.dynamic]
+version = { attr = "atlasio.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

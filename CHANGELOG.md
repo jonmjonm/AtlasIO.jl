@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.4]
+
+The Python package is **published on PyPI**: `pip install atlasio`. No code changes in either language.
+
+### Added
+
+- `.github/workflows/pypi.yml`: pushing a release tag builds the Python package and publishes it to PyPI with
+  Trusted Publishing (no stored tokens). It first checks that the tag, `atlasio.__version__` and `Project.toml`
+  agree and tests the built wheel. Running it by hand publishes to TestPyPI, as a dry run.
+- `RELEASING.md`: the release steps, for both languages.
+- A test that the Python and Julia versions match.
+
+### Changed
+
+- `python/pyproject.toml`: the version is read from `atlasio.__version__` (one place to edit); SPDX license
+  `MIT` with the license file bundled (`python/LICENSE`, a copy CI checks); authors, keywords, classifiers and a
+  changelog link for the PyPI page.
+- Docs: install with `pip install atlasio`; the git and httpimport pins move to `v0.2.4`.
+
 ## [0.2.3]
 
 The Python `atlasio` package **writes Atlas files**. AtlasIO.jl is unchanged.
