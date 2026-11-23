@@ -1,32 +1,31 @@
+## The simplest use of the atlasio package: open an atlas, print its header, then each map.
+##
+## Install the package once with:   pip install atlasio
+## Run:                             python example_atlas.py
+## (Examples for the original PythonReader/AtlasIO.py are at the v0.2.4 tag:
+##  https://github.com/jonmjonm/AtlasIO.jl/tree/v0.2.4/PythonExamples)
 
-import json
-import sys,os
-sys.path.append('../PythonReader/')
-import AtlasIO
-import helper_functions as hf
+import os
+import atlasio
 
-atlasDir="../ExampleAtlas/"
-#atlasFileName="test.jsonl"  #fake simple maps
-atlasFileName="atlas_truncated_nc_multiscale.jsonl" #Small number of real maps
-#atlasFileName="atlas_nc_multiscale.jsonl.gz" #full set of real maps
+HERE = os.path.dirname(os.path.abspath(__file__))
+atlasDir = os.path.join(HERE, "..", "ExampleAtlas")
+#atlasFileName = "test.jsonl"                           # fake simple maps
+atlasFileName = "atlas_truncated_nc_multiscale.jsonl"   # a small number of real maps
+#atlasFileName = "atlas_nc_multiscale.jsonl.gz"         # the full set of real maps (compressed)
 
+with atlasio.open_atlas(os.path.join(atlasDir, atlasFileName)) as atlas:
+    print(atlas)
+    print("description:     ", atlas.description)
+    print("date:            ", atlas.date)
+    print("format version:  ", atlas.format_version)
+    print("atlas parameters:", sorted(atlas.params))
+    print()
+    count = 0
+    for m in atlas:                  # one Map per line, in order
+        count += 1
+        print(m)                     # its name, weight and number of regions
+        # m.districting maps each region's key, a tuple of names such as ("WAKE",) or
+        # ("MECKLENBURG", "052"), to its district number; m.data holds the map's data.
 
-atlas = AtlasIO.openAtlas(os.path.join(atlasDir,atlasFileName)) ##updated to AtlasIO   
-pctDataFile = open(os.path.join(pctDataDir,pctDataFileName))
-pctData = json.load(pctDataFile)
-
-print(atlas)
-map=[]
-print("\n")
-while map!=None:
-    map=AtlasIO.nextMap(atlas)
-    if map==None:
-        break
-    print(map)
-    print("\n")
-    
-
-
-
-
-    
+print("\n%d maps" % count)

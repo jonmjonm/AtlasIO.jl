@@ -47,6 +47,8 @@ with atlasio.new_atlas("ensemble.jsonl.gz", description="my ensemble", params={"
 
 To write a modified copy of an atlas, `atlasio.new_atlas(dst, like=src_atlas)` copies its header and parameters. The files are laid out exactly as AtlasIO.jl writes them, and AtlasIO.jl reads them back unchanged.
 
+More complete scripts, for reading and for writing, are in [PythonExamples](PythonExamples). Examples using the original `PythonReader/AtlasIO.py` are kept at the [v0.2.4 tag](https://github.com/jonmjonm/AtlasIO.jl/tree/v0.2.4/PythonExamples).
+
 ## Atlas files 
     
 Atlas files contain a collection of map assignments. The format is a specialization of the JSONL format. Each line in an Atlas file is a JSON object. The first three lines describe the particular Atlas. Starting with the fourth line, each line is a JSON object that describes a map assignment. More information can be found in the [**Atlas format**](atlas_format.md) file.  
@@ -119,13 +121,15 @@ LICENSE
     This contains some election data and the adjacency data. Some files are in JSON files and others are in zipped shapefiles.
 
 * [PythonExamples](PythonExamples) Directory : 
-    This directory contains some examples of how to use the Atlas reader library. 
+    Examples using the `atlasio` package (`pip install atlasio`); they run from any directory. Examples using the original `PythonReader/AtlasIO.py` are kept at the [v0.2.4 tag](https://github.com/jonmjonm/AtlasIO.jl/tree/v0.2.4/PythonExamples).
     - [example_atlas.py](PythonExamples/example_atlas.py) :
-        This is a simple example of how to use the Atlas reader library. It reads in a file and prints out the number of maps and the number of precincts in each map.
+        The simplest example: opens an atlas, prints its header (description, date, format version, parameters), then each map and the number of maps.
     - [example_atlas_multilevel_loadMaps.py](PythonExamples/example_atlas_multilevel_loadMaps.py) :
-        This is an example of how to load a multi-level Atlas file. It reads in a file and prints out the number of maps and the number of precincts in each map.
+        Reads a multi-level (county/precinct) atlas and sums an election in each map's districts, using `PythonReader/helper_functions.py`.
     - [example_atlas_multilevel_precinctHistogram.py](PythonExamples/example_atlas_multilevel_precinctHistogram.py) :
-        This is an example of how to load a multi-level Atlas file and create a histogram of the precincts. It reads in a file and prints out the histogram.
+        Reads every map of the full NC atlas and plots, for one precinct, the histogram of the Democratic vote share of the district containing it (needs pandas, seaborn and matplotlib).
+    - [example_write_atlas.py](PythonExamples/example_write_atlas.py) :
+        Writes an atlas: reads one, adds each map's Democratic seat count to its data, writes the copy in format v2 with `atlasio.new_atlas(..., like=atlas)`, and reads it back.
 
 * [JuliaExamples](JuliaExamples) Directory :
     This directory contains some examples of how to use the Atlas reader library. 
