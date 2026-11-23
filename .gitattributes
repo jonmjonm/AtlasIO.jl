@@ -4,3 +4,4 @@ ExampleAtlas/*.jsonl.gz filter=lfs diff=lfs merge=lfs -text
 
 # Test fixtures are frozen byte-exact files: never LFS, never line-ending-normalized.
 test/fixtures/v1/** -filter -diff -merge -text
+test/fixtures/v2/** -filter -diff -merge -text

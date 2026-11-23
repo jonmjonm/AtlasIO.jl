@@ -46,11 +46,7 @@ def districting_digest(districting):
 
 def fixture_params(names):
     for name in names:
-        marks = []
-        if name.endswith(".bz2"):
-            # strict: once .bz2 support lands this XPASSes and fails, as a reminder to drop the marker.
-            marks.append(pytest.mark.xfail(strict=True, reason="PythonReader has no .bz2 support yet"))
-        yield pytest.param(name, marks=marks, id=name)
+        yield pytest.param(name, id=name)
 
 
 @pytest.mark.parametrize("name", list(fixture_params(sorted(EXPECTED["fixtures"]))))

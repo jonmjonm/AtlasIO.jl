@@ -53,6 +53,13 @@ AtlasHeader(name::String,atlasParamType::DataType,mapParamType::DataType; weight
 # Back-compat: pre-float_weights headers had no weightType; default it to Int64
 AtlasHeader(name::String,date::String,atlasParamType::String,mapParamType::String; weightType::String="Int64")=AtlasHeader(name,date,atlasParamType,mapParamType,weightType)
     
+"""
+    Atlas{T}
+
+An Atlas open for reading, as returned by [`openAtlas`](@ref): the stream positioned at the first map, the
+header's `description` and `date`, the atlas parameters `atlasParam::T`, the map `data` type, the
+`weightType`, and `formatVersion`, the format version the header declares (`"1"` or `"2"`).
+"""
 struct Atlas{T}
     io::IO
     description::String
@@ -60,10 +67,17 @@ struct Atlas{T}
     atlasParam::T
     mapParamType::DataType
     weightType::DataType
+    formatVersion::String
 end
 Atlas{T}(io::IO,atlasHeader::AtlasHeader,atlasParam::T) where T =Atlas(io,atlasHeader.description,atlasHeader.date,atlasParam,atlasHeader.mapParamType,atlasHeader.weightType)
+# Back-compat: before AtlasIO 0.2.1 an Atlas had no formatVersion; such callers mean v1
+Atlas(io::IO,description::String,date::String,atlasParam,mapParamType::DataType,weightType::DataType) =
+    Atlas(io,description,date,atlasParam,mapParamType,weightType,"1")
 # Back-compat: pre-float_weights callers passed 5 positional args (no weightType); default it to Int64
 Atlas{T}(io::IO,description::String,date::String,atlasParam::T,mapParamType::DataType) where T =Atlas(io,description,date,atlasParam,mapParamType,Int64)
+
+"The Atlas format versions this AtlasIO reads (see atlas_format.md). It writes v1."
+const FORMAT_VERSIONS = ("1", "2")
 
 Districting=Dict{Tuple{Vararg{String}},Int64} #Dict{String,Int64}
 
@@ -108,16 +122,83 @@ end
 "Slow path of `parseDistrictKey`: decode the key string as a JSON array of strings."
 _parseDistrictKeyJSON(s::AbstractString) = Tuple(String.(JSON.parse(s, Vector{String})))
 
-function Map{T,W}(x::Dict{String, Any}) where {T<:Any, W<:Real}
-    dict=Dict{Tuple{Vararg{String}}, Int64}()
-    for x in x["districting"]
+"""
+    Map{T,W}(x::Dict{String,Any})
+
+Build a `Map` from a parsed map line, in either format: the district assignment is read from `x["districting"]`
+(v1) or `x["assignment"]` (v2), whichever the line has.
+"""
+Map{T,W}(x::Dict{String, Any}) where {T<:Any, W<:Real} = _mapFromDict(x, T, W, nothing)
+
+"""
+Build a `Map` from parsed map line `x`. `version` is the format version the atlas header declares (`"1"`
+or `"2"`), or `nothing` to accept either; a line in the other format raises an `AtlasFormatError`.
+"""
+function _mapFromDict(x::Dict{String,Any}, ::Type{T}, ::Type{W}, version) where {T,W<:Real}
+    hasV1 = haskey(x, "districting")
+    hasV2 = haskey(x, "assignment")
+    which = hasV1 && hasV2 ? "both \"districting\" (v1) and \"assignment\" (v2)" :
+            hasV1 ? "\"districting\" (v1)" : "\"assignment\" (v2)"
+    (hasV1 || hasV2) ||
+        throw(AtlasFormatError("map line has neither \"districting\" (v1) nor \"assignment\" (v2)$(_mapName(x))."))
+    hasV1 && hasV2 && throw(AtlasFormatError("map line has $which$(_mapName(x))."))
+    if version !== nothing && (version == "2") != hasV2
+        throw(AtlasFormatError("map line has $which but the header declares formatVersion \"$version\"" *
+                               "$(_mapName(x)); a file holds maps of one version only."))
+    end
+    dict = hasV2 ? _assignmentToDistricting(x["assignment"], x) : _districtingFromV1(x["districting"])
+    return Map(x["name"],dict,W(x["weight"]),T(x["data"]))
+end
+
+_mapName(x) = (n = get(x, "name", nothing); n isa AbstractString ? " (map \"$n\")" : "")
+
+function _districtingFromV1(entries)
+    dict=Districting()
+    for x in entries
         for (k,v) in x
                 kk=parseDistrictKey(k)
                 dict[kk]=v
         end
     end
-    return Map(x["name"],dict,W(x["weight"]),T(x["data"]))
+    return dict
 end
+
+"""
+Flatten a v2 `assignment` tree into a `Districting`: the path from the top of the tree to each leaf is that
+region's key. Enforces the spec's rule 3: every value is an integer district or a non-empty object.
+(Rule 1, no key a prefix of another, holds for any tree.)
+"""
+function _assignmentToDistricting(tree, x)
+    tree isa AbstractDict ||
+        throw(AtlasFormatError("\"assignment\" must be a JSON object, not $(_jsonKind(tree))$(_mapName(x))."))
+    d = Districting()
+    _addAssignment!(d, tree, String[], x)
+    return d
+end
+
+function _addAssignment!(d::Districting, node::AbstractDict, path::Vector{String}, x)
+    for (name, v) in node
+        push!(path, name)
+        if v isa Integer && !(v isa Bool)
+            typemin(Int64) <= v <= typemax(Int64) ||
+                throw(AtlasFormatError("district $v at key $(Tuple(path)) does not fit in an Int64$(_mapName(x))."))
+            d[Tuple(path)] = v
+        elseif v isa AbstractDict
+            isempty(v) && throw(AtlasFormatError("empty branch at key $(Tuple(path)) in \"assignment\": a split " *
+                                                 "region must have at least one sub-region$(_mapName(x))."))
+            _addAssignment!(d, v, path, x)
+        else
+            throw(AtlasFormatError("the value at key $(Tuple(path)) in \"assignment\" is $(_jsonKind(v)); it must " *
+                                   "be an integer district or an object of sub-regions$(_mapName(x))."))
+        end
+        pop!(path)
+    end
+    return d
+end
+
+_jsonKind(v) = v === nothing ? "null" : v isa Bool ? "a boolean" : v isa AbstractString ? "a string" :
+               v isa Number ? "the non-integer number $v" : v isa AbstractVector ? "an array" :
+               v isa AbstractDict ? "an object" : string(typeof(v))
 # Back-compat: allow constructing a Map with only the data type parameter;
 # the weight type W is inferred from the supplied weight (defaults to Int64-style ints).
 Map{T}(; name, districting, weight, data) where T = Map{T,typeof(weight)}(name, districting, weight, data)
@@ -234,8 +315,8 @@ function _districtingJSONReference(d::Districting)
     return JSON.JSONText(String(take!(buf)))
 end
 
-# Map's on-disk form: field order name, weight, data, districting (the lazy MapData reader relies on
-# districting coming last).
+# Map's on-disk form (v1, the format AtlasIO writes): field order name, weight, data, districting (the lazy
+# MapData reader relies on the assignment coming last).
 JSON.lower(x::Map) = (name=x.name, weight=x.weight, data=x.data, districting=districtingJSON(x.districting))
 
 """
@@ -313,13 +394,25 @@ function openAtlas(io::IO)::Atlas
     _readlineOrFormatError(io, "the initial banner line (line 1)") #throw away initial line (the human-readable format banner)
 
     headerLine = _readlineOrFormatError(io, "the header line (line 2)")
-    local atlasHeaderDict
+    local headerAny
     try
-        atlasHeaderDict = JSON.parse(headerLine, Dict{String,String})
+        headerAny = _parse(headerLine)
+        headerAny isa Dict{String,Any} || error("it is not a JSON object")
     catch e
         throw(AtlasFormatError("not a valid Atlas file: the header line (line 2) " *
                                "did not parse as JSON ($(sprint(showerror, e)))."))
     end
+    for (k, v) in headerAny
+        v isa String || throw(AtlasFormatError("not a valid Atlas file: the header line (line 2) value of " *
+                                               "\"$k\" must be a JSON string, not $(_jsonKind(v))."))
+    end
+    atlasHeaderDict = Dict{String,String}(headerAny)
+
+    formatVersion = get(atlasHeaderDict, "formatVersion", "1")
+    formatVersion in FORMAT_VERSIONS ||
+        throw(AtlasFormatError("unsupported Atlas formatVersion \"$formatVersion\": AtlasIO " *
+                               "$(pkgversion(@__MODULE__)) reads format versions $(join(FORMAT_VERSIONS, " and ")). " *
+                               "Upgrade AtlasIO to read this file."))
 
     for k in ("description", "date", "atlasParamType", "mapParamType")
         haskey(atlasHeaderDict, k) ||
@@ -350,7 +443,7 @@ function openAtlas(io::IO)::Atlas
                                "(line 3) did not parse as JSON ($(sprint(showerror, e)))."))
     end
 
-    atlas=Atlas{map_ParamType}(io,atlasHeader.description,atlasHeader.date,atlasParam,map_ParamType, weight_type)
+    atlas=Atlas{map_ParamType}(io,atlasHeader.description,atlasHeader.date,atlasParam,map_ParamType, weight_type, formatVersion)
 
     return atlas
 end
@@ -362,21 +455,36 @@ Parse one Atlas map line (the JSON text of a single map, with or without its tra
 `Map{T,W}`: `T` is the type of the map's `data`, `W` the weight type. Any JSON or decoding failure is
 raised as an [`AtlasFormatError`](@ref).
 
+The line may be in either format version: its district assignment is read from `districting` (v1) or
+`assignment` (v2), whichever it has. Reading through an open `Atlas` (`nextMap`, `nextMaps`,
+[`parseBufferToMap`](@ref)) also checks that each line matches the version its header declares.
+
 This is the way to parse map lines you have read yourself (e.g. to parse them in parallel), without
 needing any JSON library: use it instead of `JSON3.read(line, Map{T,W})`, which no longer works since
 AtlasIO 0.2. [`parseBufferToMap`](@ref) does the same with the types taken from an open `Atlas`.
 """
-function parseMap(line::AbstractString, ::Type{T}, ::Type{W}=Int64) where {T, W<:Real}
+parseMap(line::AbstractString, ::Type{T}, ::Type{W}=Int64) where {T, W<:Real} = _parseMap(line, T, W, nothing)
+
+function _parseMap(line::AbstractString, ::Type{T}, ::Type{W}, version) where {T, W<:Real}
+    local x
     try
-        return Map{T,W}(_parse(line))
+        x = _parse(line)
+        x isa Dict{String,Any} || error("a map line must be a JSON object")
     catch e
         throw(AtlasFormatError("not a valid Atlas map line: failed to parse as JSON " *
                                "($(sprint(showerror, e)))."))
     end
+    try
+        return _mapFromDict(x, T, W, version)
+    catch e
+        e isa AtlasFormatError && rethrow()
+        throw(AtlasFormatError("not a valid Atlas map line$(_mapName(x)): $(sprint(showerror, e))."))
+    end
 end
 
 "Parse `buff` as a `Map` line of `atlas`, raising any failure as an `AtlasFormatError`."
-_parseMapLine(atlas::Atlas, buff::AbstractString)::Map = parseMap(buff, atlas.mapParamType, atlas.weightType)
+_parseMapLine(atlas::Atlas, buff::AbstractString)::Map =
+    _parseMap(buff, atlas.mapParamType, atlas.weightType, atlas.formatVersion)
 
 function nextMap(atlas::Atlas)::Map
     eof(atlas.io) && throw(EOFError())
@@ -450,11 +558,30 @@ function nextMaps(atlas::Atlas; n::Integer=typemax(Int), batch::Integer=256)
         pending = Threads.@spawn readchunk(k)
         base = length(out)
         resize!(out, base + nread)
-        Threads.@threads for i in 1:nread
-            @inbounds out[base + i] = parseBufferToMap(atlas, lines[i])
+        try
+            Threads.@threads for i in 1:nread
+                @inbounds out[base + i] = parseBufferToMap(atlas, lines[i])
+            end
+        catch e
+            # Raise a bad line's error itself (as nextMap does), not the threads' CompositeException.
+            try wait(pending) catch end   # let the prefetch finish before handing the stream back
+            throw(_firstTaskError(e))
         end
     end
     return out
+end
+
+"The exception a failed `Threads.@threads` loop raised in its first failed task (or `e` itself)."
+function _firstTaskError(e)
+    while true
+        if e isa CompositeException && !isempty(e.exceptions)
+            e = first(e.exceptions)
+        elseif e isa TaskFailedException
+            e = e.task.exception
+        else
+            return e
+        end
+    end
 end
 
 """
@@ -478,9 +605,10 @@ end
     parseMapData(buff, T, W=Int64) -> MapData{T,W}
 
 Parse a map line `buff` into a [`MapData`](@ref): only `name`, `weight`, and
-`data` are touched. `districting` is never materialized, nor even scanned: the line
-is read with JSON.jl's lazy parser, and `districting` is the last field of a map
-line, so the three lookups stop before reaching it. Wraps a parse failure as an
+`data` are touched. The district assignment is never materialized, nor even scanned: the line
+is read with JSON.jl's lazy parser, and the assignment (`districting` in v1, `assignment` in v2) is the last
+field of a map line, so the three lookups stop before reaching it. This works the same for both format
+versions. Wraps a parse failure as an
 `AtlasFormatError`, matching [`parseMap`](@ref).
 
 `data` is converted exactly as [`parseMap`](@ref) does, `T(data)` with objects as

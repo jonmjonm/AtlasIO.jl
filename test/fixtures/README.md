@@ -30,10 +30,28 @@ Fixed in AtlasIO.jl 0.2 (the tests were `@test_broken` under 0.1.5 and are now p
 * **`\uXXXX` escapes inside district keys.** 0.1.5's `parseDistrictKey` dropped the backslash, so keys
   written by Python's `json` with non-ASCII names decoded wrongly (`python_written.jsonl`, map "Doña Ana").
 
-Still open:
+Fixed in AtlasIO 0.2.1: **`.bz2` (Python).** PythonReader now opens `.bz2` files (those tests were
+`xfail(strict=True)`).
 
-* **`.bz2` (Python).** PythonReader cannot open `.bz2` files yet. Those tests are `xfail(strict=True)`, so
-  they fail loudly once support lands, as a reminder to remove the marker.
+# v2 test fixtures
+
+`v2/` holds format v2 files made by `make_v2_fixtures.py` with **Python's `json`** (not AtlasIO):
+
+* **Twins** of the v1 files above (and of `ExampleAtlas/atlas_truncated_nc_multiscale.jsonl`, as
+  `nc_truncated.jsonl.gz`). Each is its v1 file with `"formatVersion":"2"` added to the header and each
+  `districting` rewritten as the `assignment` tree; every other byte is unchanged. A twin must read back to
+  exactly the values of its v1 source, so the tests check twins against `v1/expected.json`.
+* `spec_examples.jsonl`: the examples in `atlas_format.md`, including three levels, an empty assignment and
+  names that are empty or hold control characters (spec rule 4), with keys written out by hand.
+* `expected.json`: which v1 file each twin comes from, the SHA-256 of every file, and the expected values
+  of the spec examples.
+
+Tests: `test/v2_fixtures.jl` (Julia), `python/tests/test_atlasio.py` (the `atlasio` package),
+`PythonReader/test_v2_fixtures.py` (the original reader). `test/compat/run_v2_old_readers.sh` checks that
+AtlasIO.jl 0.1.5 and 0.2.0, which predate v2, fail safely on these files; `PythonReader/test_v2_fixtures.py`
+checks the same for the 0.2.0 Python reader (kept in `test/compat/python_reader_0_2_0/`).
+
+The v2 files may be regenerated (they are derived, not frozen): `python3 test/fixtures/make_v2_fixtures.py`.
 
 ## How the files were made
 

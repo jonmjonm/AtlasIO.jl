@@ -1,3 +1,4 @@
+import json
 import math
 
 '''
@@ -29,18 +30,29 @@ This file contains a number of helper functions.
 
 '''
 
+def _tuple_keyed(districting):
+    # A districting from the atlasio package has tuple keys, ("WAKE", "0101"); one from AtlasIO.py has raw
+    # key strings, '["WAKE", "0101"]'. Decoding the strings also matches keys written with other spacing or
+    # escapes.
+    if all(isinstance(k, tuple) for k in districting):
+        return districting
+    return {(k if isinstance(k, tuple) else tuple(json.loads(k, strict=False))): v for k, v in districting.items()}
+
+
 def get_node_to_district(districting, nodes):
     # This function reconstructs for a multiscale districting description
-    # the mapping from precinct IDs to Districts for a given map 
+    # the mapping from precinct IDs to Districts for a given map.
+    # districting may have tuple keys (atlasio package) or raw key strings (AtlasIO.py).
+    districting = _tuple_keyed(districting)
     node_id_to_district = {}
     for node in nodes:
         county = node["county"]
-        cnty_key = '[\"'+county+'\"]'
+        cnty_key = (county,)
         if cnty_key in districting:
             node_id_to_district[node["id"]] = districting[cnty_key]
             continue
         pct = node["prec_id"]
-        cnty_pct_key = '[\"'+county+'\", \"' + pct + '\"]'
+        cnty_pct_key = (county, pct)
         if cnty_pct_key in districting:
             node_id_to_district[node["id"]] = districting[cnty_pct_key]
         else:
