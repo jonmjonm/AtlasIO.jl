@@ -3,13 +3,14 @@
 Read [Atlas files](https://github.com/jonmjonm/AtlasIO.jl/blob/main/atlas_format.md), the format the Duke
 Quantifying Gerrymandering group's samplers (Cycle Walk, Metropolized Forest Recom) use to store ensembles of
 redistricting maps. Reads format versions 1 and 2, plain or compressed (`.jsonl`, `.jsonl.gz`, `.jsonl.bz2`).
-Read-only: [AtlasIO.jl](https://github.com/jonmjonm/AtlasIO.jl) (Julia) writes Atlas files.
+It also converts files between the two versions. [AtlasIO.jl](https://github.com/jonmjonm/AtlasIO.jl) (Julia)
+writes Atlas files.
 
 ## Install
 
 From a release tag of the AtlasIO.jl repository (needs git):
 
-    pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.1#subdirectory=python"
+    pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.2#subdirectory=python"
 
 It needs only the Python standard library (Python 3.9 or later; tested on 3.11 to 3.14). With `pip install orjson` (or the `fast` extra) it
 parses lines faster.
@@ -35,6 +36,17 @@ Invalid files, a `formatVersion` this version does not know, and maps that break
 `atlasio.AtlasFormatError` (a `ValueError`).
 
 The full API is in [function_calls.md](https://github.com/jonmjonm/AtlasIO.jl/blob/main/function_calls.md).
+
+## Convert between format versions
+
+```
+python -m atlasio convert atlas.jsonl.gz atlas_v2.jsonl.gz --to 2     # or: atlasio convert ...
+```
+
+or `atlasio.convert("atlas.jsonl.gz", "atlas_v2.jsonl.gz", to=2)`. Only the header's `formatVersion` and each
+map's assignment are rewritten; everything else is copied byte for byte, and converting back gives the same
+districting for every map. A districting v2 cannot hold (a region both whole and split) stops the conversion
+with an error naming the line and map. The output is byte-identical to AtlasIO.jl's `convertAtlas`.
 
 ## Tests
 

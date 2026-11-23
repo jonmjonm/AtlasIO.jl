@@ -38,6 +38,7 @@ export Map,
     gzipMember,
     isGzipOutput,
     atlasHeaderBytes,
+    convertAtlas,
     GZIP_MEMBER_TARGET
 
 struct AtlasHeader
@@ -315,9 +316,117 @@ function _districtingJSONReference(d::Districting)
     return JSON.JSONText(String(take!(buf)))
 end
 
-# Map's on-disk form (v1, the format AtlasIO writes): field order name, weight, data, districting (the lazy
-# MapData reader relies on the assignment coming last).
+"v1 districting with its entries in sorted key order (deterministic; used by `convertAtlas`)."
+function _districtingJSONSorted(d::Districting)
+    buf = IOBuffer(sizehint = 32 * length(d) + 2)
+    write(buf, UInt8('['))
+    first = true
+    for k in sort!(collect(keys(d)); lt=_keyless)
+        first ? (first = false) : write(buf, UInt8(','))
+        write(buf, UInt8('{'))
+        _writeDistrictKey!(buf, k) || JSON.json(buf, districtKeyString(k))
+        write(buf, UInt8(':'))
+        _writeSmallInt!(buf, d[k])
+        write(buf, UInt8('}'))
+    end
+    write(buf, UInt8(']'))
+    return JSON.JSONText(String(take!(buf)))
+end
+
+"""
+    _assignmentJSON(d::Districting, name="") -> JSON.JSONText
+
+The v2 on-disk assignment (atlas_format.md, "v2: assignment"): a tree whose names are sorted at every level
+(by code point, the UTF-8 byte order the spec asks for), so the same districting always gives the same bytes.
+
+The keys are first grouped into a tree of Dicts, one level per region level, and each level's names are then
+sorted as plain strings. (Sorting the keys themselves is slow: they are tuples of varying length.) Building
+the tree also finds every districting v2 cannot hold, raising an `AtlasFormatError` naming map `name`: an
+empty key `()`, or a key that is a prefix of another (rule 1: a region is assigned whole or split, never both).
+"""
+function _assignmentJSON(d::Districting, name::AbstractString="")
+    root = Dict{String,Any}()
+    for (k, v) in d
+        n = length(k)
+        n == 0 && throw(AtlasFormatError("cannot write format v2: $(_forMap(name))the district key () is " *
+                                         "empty; a v2 key names at least one region."))
+        node = root
+        for i in 1:(n - 1)
+            child = get!(Dict{String,Any}, node, k[i])
+            child isa Dict{String,Any} || _prefixError(name, k[1:i], k)
+            node = child
+        end
+        haskey(node, k[n]) && _prefixError(name, k, _someKeyUnder(k, node[k[n]]))
+        node[k[n]] = v
+    end
+    buf = IOBuffer(sizehint = 16 * length(d) + 2)
+    _writeAssignmentNode!(buf, root)
+    return JSON.JSONText(String(take!(buf)))
+end
+
+function _writeAssignmentNode!(buf::IOBuffer, node::Dict{String,Any})
+    write(buf, UInt8('{'))
+    first = true
+    for name in sort!(collect(keys(node)))
+        first ? (first = false) : write(buf, UInt8(','))
+        _writeJSONName!(buf, name)
+        write(buf, UInt8(':'))
+        v = node[name]
+        v isa Dict{String,Any} ? _writeAssignmentNode!(buf, v) : _writeSmallInt!(buf, v::Int64)
+    end
+    write(buf, UInt8('}'))
+    return nothing
+end
+
+"A key in the subtree `node` found under `prefix` (for the error message)."
+_someKeyUnder(prefix, node) = node isa Dict{String,Any} ?
+    (n = first(sort!(collect(keys(node)))); _someKeyUnder((prefix..., n), node[n])) : prefix
+
+_prefixError(name, short, long) =
+    throw(AtlasFormatError("cannot write format v2: $(_forMap(name))the key $(Tuple(short)) is a prefix of the key " *
+                           "$(Tuple(long)), so the region would be both whole and split (rule 1 of " *
+                           "atlas_format.md). Write v1 or fix the districting."))
+
+"Key order: element by element (code point order), a key before the keys it is a prefix of."
+function _keyless(a::Tuple{Vararg{String}}, b::Tuple{Vararg{String}})
+    for i in 1:min(length(a), length(b))
+        x, y = a[i]::String, b[i]::String
+        x == y || return isless(x, y)
+    end
+    return length(a) < length(b)
+end
+
+"Write `s` as a JSON string: directly when nothing needs escaping, else through JSON.jl."
+function _writeJSONName!(buf::IOBuffer, s::String)
+    for c in codeunits(s)
+        if c < 0x20 || c == 0x7f || c == UInt8('"') || c == UInt8('\\')
+            JSON.json(buf, s)
+            return nothing
+        end
+    end
+    write(buf, UInt8('"'), s, UInt8('"'))
+    return nothing
+end
+
+_forMap(name) = isempty(name) ? "" : "map \"$name\": "
+
+"""
+Normalize a format version given as `1`, `2`, `"1"` or `"2"` to the header's string form. Anything else is an
+`ArgumentError`.
+"""
+function _formatVersion(v)
+    s = v isa AbstractString ? String(v) : v isa Integer ? string(v) : ""
+    s in FORMAT_VERSIONS ||
+        throw(ArgumentError("formatVersion must be 1 or 2 (or \"1\" or \"2\"), got $(repr(v))"))
+    return s
+end
+
+# Map's on-disk form: field order name, weight, data, then the assignment (the lazy MapData reader relies on
+# the assignment coming last). This is v1; `_mapForm(m, "2")` gives v2.
 JSON.lower(x::Map) = (name=x.name, weight=x.weight, data=x.data, districting=districtingJSON(x.districting))
+
+_mapForm(m::Map, version::String) = version == "1" ? m :
+    (name=m.name, weight=m.weight, data=m.data, assignment=_assignmentJSON(m.districting, m.name))
 
 """
     AtlasStyle <: JSON.JSONStyle
@@ -353,10 +462,27 @@ _json(io::IO, x) = JSON.json(io, x; style=ATLAS_STYLE, sort_keys=false)
 # exactly (0.0 stays Float64, integers beyond 2^53 stay exact).
 _parse(s) = JSON.parse(s; dicttype=Dict{String,Any})
 
-function newAtlas(io::IO, atlasHeader::AtlasHeader, atlasParam)
+"""
+    newAtlas(io, atlasHeader, atlasParam; formatVersion=1)
+
+Write an Atlas's three header lines to `io`: the banner, `atlasHeader`, and the atlas parameters. Then write
+each map with [`addMap`](@ref)/[`addMaps`](@ref) (or [`mapBytes`](@ref)) using the SAME `formatVersion`.
+
+`formatVersion` is `1` (the default) or `2` (see atlas_format.md). For v2 the header gains
+`"formatVersion":"2"`; v1 output is exactly what earlier versions of AtlasIO wrote. A file whose maps are not
+in its header's version is rejected by every reader.
+"""
+function newAtlas(io::IO, atlasHeader::AtlasHeader, atlasParam; formatVersion=1)
+    version = _formatVersion(formatVersion)
     _json(io,"This is an Atlas for Redistricting Maps. See 'https://github.com/jonmjonm/AtlasIO.jl/blob/main/atlas_format.md' for more information about the format.")
     write(io,"\n")
-    _json(io,atlasHeader)
+    if version == "1"
+        _json(io,atlasHeader)
+    else
+        h = atlasHeader
+        _json(io, (description=h.description, date=h.date, atlasParamType=h.atlasParamType,
+                   mapParamType=h.mapParamType, weightType=h.weightType, formatVersion=version))
+    end
     write(io,"\n")
     _json(io,atlasParam)
     write(io,"\n")
@@ -658,50 +784,64 @@ function parseBufferToMapData(atlas::Atlas, buff::String)::MapData
 end
 
 """
-    mapJSON(m::Map) -> String
+    mapJSON(m::Map; formatVersion=1) -> String
 
 The JSON text of map `m` exactly as it appears on one line of an Atlas file, WITHOUT the trailing
-newline. Use [`mapBytes`](@ref) for a complete line ready to write.
+newline. Use [`mapBytes`](@ref) for a complete line ready to write. With `formatVersion=2` the assignment is
+written as a v2 tree (`"assignment"`), which raises an `AtlasFormatError` if a key is empty or is a prefix
+of another key.
 """
-mapJSON(m::Map) = _json(m)
+mapJSON(m::Map; formatVersion=1) = _json(_mapForm(m, _formatVersion(formatVersion)))
 
 """
-    mapBytes(m::Map) -> Vector{UInt8}
+    mapBytes(m::Map; formatVersion=1) -> Vector{UInt8}
 
 One complete Atlas map line for `m`, INCLUDING the trailing `"\\n"`: exactly the bytes `addMap` writes.
-Use it to build the input of [`writeMaps!`](@ref), e.g. `writeMaps!(out, mapBytes.(maps))`.
+Use it to build the input of [`writeMaps!`](@ref), e.g. `writeMaps!(out, mapBytes.(maps))`. See
+[`mapJSON`](@ref) for `formatVersion`.
 """
-function mapBytes(m::Map)
+function mapBytes(m::Map; formatVersion=1)
     io = IOBuffer()
-    _json(io, m)
+    _json(io, _mapForm(m, _formatVersion(formatVersion)))
     write(io, '\n')
     return take!(io)
 end
 
-function addMap(io::IO,map::Map{T}) where T
-    write(io, mapBytes(map))
+"""
+    addMap(io, map; formatVersion=1)
+    addMap(io, districting, name, weight, data; formatVersion=1)
+
+Write one map line to `io`, in the format version the atlas was started with ([`newAtlas`](@ref)).
+"""
+function addMap(io::IO,map::Map{T}; formatVersion=1) where T
+    write(io, mapBytes(map; formatVersion=formatVersion))
 end
 
-function addMap(io::IO,dist::Districting,name::String,w::Real,mapParams)
-   addMap(io,Map{typeof(mapParams)}(name,dist,w,mapParams))
+function addMap(io::IO,dist::Districting,name::String,w::Real,mapParams; formatVersion=1)
+   addMap(io,Map{typeof(mapParams)}(name,dist,w,mapParams); formatVersion=formatVersion)
 end
 
 """
-    addMaps(io::IO, maps) -> Int
+    addMaps(io::IO, maps; formatVersion=1) -> Int
 
 Write a collection of `Map`s to `io`. JSON serialization (the bottleneck on the
 write path) is done in parallel across threads, then the resulting strings are
 written to `io` serially in order. The output is byte-identical to calling
-`addMap(io, m)` for each map in turn. Returns the total number of bytes written.
+`addMap(io, m; formatVersion)` for each map in turn. Returns the total number of bytes written.
 
 Start Julia with multiple threads (e.g. `julia -t auto`) to benefit; with a
 single thread it runs serially with negligible overhead.
 """
-function addMaps(io::IO, maps)
+function addMaps(io::IO, maps; formatVersion=1)
+    version = _formatVersion(formatVersion)
     ms = collect(maps)                       # ensure 1-based, indexable
     lines = Vector{Vector{UInt8}}(undef, length(ms))
-    Threads.@threads for i in eachindex(ms)
-        @inbounds lines[i] = mapBytes(ms[i])
+    try
+        Threads.@threads for i in eachindex(ms)
+            @inbounds lines[i] = mapBytes(ms[i]; formatVersion=version)
+        end
+    catch e
+        throw(_firstTaskError(e))            # e.g. a map v2 cannot hold, as addMap would raise it
     end
     nb = 0
     @inbounds for i in eachindex(ms)
@@ -1168,6 +1308,209 @@ function atlasHeaderBytes(path::AbstractString)
     end
     close(src)
     return take!(buf)
+end
+
+# ---------------------------------------------------------------------------
+# Converting between format versions
+# ---------------------------------------------------------------------------
+
+"""
+    convertAtlas(src, dst; formatVersion, batch=1024, cores=Threads.nthreads()) -> Int
+
+Copy the Atlas file `src` to `dst`, converting every map to format version `formatVersion` (`1` or `2`; see
+atlas_format.md), and return the number of maps. Either file may be plain, `.gz` or `.bz2` (by extension).
+
+Only what the version changes is rewritten: the header's `formatVersion` (added for v2, removed for v1) and
+each map's assignment field (`districting` in v1, `assignment` in v2). The banner, the atlas parameters, and
+each map's name, weight and data are copied byte for byte, so no data value or its formatting can change.
+v2 trees are written sorted; v1 entries are written in sorted key order. Every line, the last included, ends
+with a newline. Converting is lossless: converting back gives the same districting for every map.
+
+Raises an `AtlasFormatError` naming the line and map for anything that cannot be converted: a map line that
+does not match the header's version, a districting v2 cannot hold (a key that is a prefix of another, or an
+empty key), or a map line whose assignment is not its last field. `dst` is then removed.
+Map lines are converted in parallel across threads in batches of `batch` lines; a `.gz` `dst` is written as
+parallel gzip members (see [`AtlasOutput`](@ref)).
+"""
+function convertAtlas(src::AbstractString, dst::AbstractString; formatVersion, batch::Integer=1024,
+                      cores::Int=Threads.nthreads())
+    to = _formatVersion(formatVersion)
+    batch >= 1 || throw(ArgumentError("batch must be ≥ 1"))
+    abspath(src) == abspath(dst) && throw(ArgumentError("convertAtlas: src and dst are the same file: $src"))
+    isfile(src) || throw(ArgumentError("convertAtlas: no such file: $src"))
+    in = smartOpen(String(src), "r")
+    out = nothing
+    try
+        banner = _readlineOrFormatError(in, "the initial banner line (line 1)")
+        headerLine = _readlineOrFormatError(in, "the header line (line 2)")
+        paramLine = _readlineOrFormatError(in, "the atlas-parameters line (line 3)")
+        from, newHeader = _convertHeader(headerLine, to)
+        out = openAtlasOutput(String(dst), Vector{UInt8}(banner * "\n" * newHeader * "\n" * paramLine * "\n"),
+                              cores)
+        n = 0
+        lines = String[]
+        while true
+            empty!(lines)
+            while length(lines) < batch && !eof(in)
+                push!(lines, _readlineOrFormatError(in, "map line $(n + length(lines) + 4)"))
+            end
+            isempty(lines) && break
+            bytes = Vector{Vector{UInt8}}(undef, length(lines))
+            try
+                Threads.@threads for i in eachindex(lines)
+                    @inbounds bytes[i] = _convertMapLine(lines[i], from, to, n + i + 3)
+                end
+            catch e
+                throw(_firstTaskError(e))
+            end
+            writeMaps!(out, bytes)
+            n += length(lines)
+        end
+        close(out)
+        out = nothing
+        return n
+    catch
+        if out !== nothing
+            try close(out) catch end
+            rm(dst; force=true)
+        end
+        rethrow()
+    finally
+        close(in)
+    end
+end
+
+"""
+The header line converted to format version `to`, and the version it declared: `(from, line)`. The line is
+returned unchanged when the version does not change; otherwise it is re-written with its fields in the same
+order, `formatVersion` set (v2) or removed (v1).
+"""
+function _convertHeader(headerLine::AbstractString, to::String)
+    local h
+    try
+        h = JSON.parse(headerLine)                       # JSON.Object: keeps the field order
+        h isa AbstractDict || error("it is not a JSON object")
+    catch e
+        throw(AtlasFormatError("not a valid Atlas file: the header line (line 2) did not parse as JSON " *
+                               "($(sprint(showerror, e)))."))
+    end
+    for (k, v) in h
+        v isa AbstractString || throw(AtlasFormatError("not a valid Atlas file: the header line (line 2) " *
+                                                       "value of \"$k\" must be a JSON string, not $(_jsonKind(v))."))
+    end
+    from = String(get(h, "formatVersion", "1"))
+    from in FORMAT_VERSIONS ||
+        throw(AtlasFormatError("unsupported Atlas formatVersion \"$from\": AtlasIO $(pkgversion(@__MODULE__)) " *
+                               "reads format versions $(join(FORMAT_VERSIONS, " and ")). Upgrade AtlasIO."))
+    from == to && return from, String(headerLine)
+    had = haskey(h, "formatVersion")
+    to == "1" ? delete!(h, "formatVersion") : (h["formatVersion"] = to)
+    # Edit just that field in the original text, so the rest of the header keeps its exact bytes; keep the
+    # edit only if it parses to exactly the intended header (same fields, values and order).
+    edited = _editHeaderVersion(String(headerLine), had, to)
+    if edited !== nothing
+        p = try JSON.parse(edited) catch; nothing end
+        p isa AbstractDict && collect(keys(p)) == collect(keys(h)) && all(p[k] == h[k] for k in keys(h)) &&
+            return from, edited
+    end
+    return from, JSON.json(h; sort_keys=false)
+end
+
+"The header text with its `formatVersion` field set to `to` (v2) or removed (v1), or `nothing`."
+function _editHeaderVersion(line::String, had::Bool, to::String)
+    field = r"\"formatVersion\"\s*:\s*\"[^\"\\]*\""
+    if to == "2"
+        had && return replace(line, field => "\"formatVersion\":\"2\""; count=1)
+        s = rstrip(line)
+        endswith(s, "}") || return nothing
+        body = rstrip(s[1:prevind(s, lastindex(s))])
+        return body * (endswith(body, "{") ? "" : ",") * "\"formatVersion\":\"2\"}"
+    end
+    for pat in (r"\s*,\s*\"formatVersion\"\s*:\s*\"[^\"\\]*\"", r"\"formatVersion\"\s*:\s*\"[^\"\\]*\"\s*,?\s*")
+        occursin(pat, line) && return replace(line, pat => ""; count=1)
+    end
+    return nothing
+end
+
+"One map line converted from version `from` to `to`, with its newline; `lineno` is for error messages."
+function _convertMapLine(line::String, from::String, to::String, lineno::Integer)::Vector{UInt8}
+    from == to && return Vector{UInt8}(line * "\n")
+    local x
+    try
+        x = _parse(line)
+        x isa Dict{String,Any} || error("a map line must be a JSON object")
+    catch e
+        throw(AtlasFormatError("line $lineno: not a valid Atlas map line: failed to parse as JSON " *
+                               "($(sprint(showerror, e)))."))
+    end
+    field, other = from == "1" ? ("districting", "assignment") : ("assignment", "districting")
+    haskey(x, field) ||
+        throw(AtlasFormatError("line $lineno$(_mapName(x)): the header declares formatVersion \"$from\" but the " *
+                               "map line has no \"$field\"$(haskey(x, other) ? " (it has \"$other\")" : "")."))
+    haskey(x, other) && throw(AtlasFormatError("line $lineno$(_mapName(x)): the map line has both " *
+                                               "\"districting\" and \"assignment\"."))
+    name = get(x, "name", "")
+    name isa AbstractString || (name = "")
+    try
+        d = from == "1" ? _districtingFromV1(x[field]) : _assignmentToDistricting(x[field], x)
+        start = _lastTopLevelKeyStart(line)
+        cu = codeunits(line)
+        key = codeunits("\"$field\"")
+        (start > 0 && start + length(key) - 1 <= length(cu) && view(cu, start:start + length(key) - 1) == key) ||
+            throw(AtlasFormatError("the assignment (\"$field\") must be the map line's last field, as " *
+                                   "atlas_format.md requires; convertAtlas only rewrites that field."))
+        io = IOBuffer(sizehint = length(cu))
+        write(io, view(cu, 1:start - 1))                 # name, weight, data: byte for byte
+        if to == "2"
+            write(io, "\"assignment\":", _assignmentJSON(d).value)
+        else
+            write(io, "\"districting\":", _districtingJSONSorted(d).value)
+        end
+        write(io, "}\n")
+        return take!(io)
+    catch e
+        msg = e isa AtlasFormatError ? replace(e.msg, r"^cannot write format v2: " => "cannot convert to v2: ") :
+                                       "not a valid Atlas map line: $(sprint(showerror, e))."
+        throw(AtlasFormatError("line $lineno$(isempty(name) ? "" : " (map \"$name\")"): $msg"))
+    end
+end
+
+"""
+Byte index of the opening quote of the last key of the top-level JSON object in `s`, or 0. Tracks nesting and
+strings (with escapes), so keys and text inside nested values and strings are skipped.
+"""
+function _lastTopLevelKeyStart(s::AbstractString)
+    cu = codeunits(s)
+    depth = 0
+    instr = esc = expectKey = false
+    last = 0
+    @inbounds for i in eachindex(cu)
+        c = cu[i]
+        if instr
+            if esc
+                esc = false
+            elseif c == UInt8('\\')
+                esc = true
+            elseif c == UInt8('"')
+                instr = false
+            end
+        elseif c == UInt8('"')
+            instr = true
+            depth == 1 && expectKey && (last = i)
+            expectKey = false
+        elseif c == UInt8('{') || c == UInt8('[')
+            depth += 1
+            expectKey = depth == 1 && c == UInt8('{')
+        elseif c == UInt8('}') || c == UInt8(']')
+            depth -= 1
+            expectKey = false
+        elseif c == UInt8(',')
+            expectKey = depth == 1
+        elseif !(c == UInt8(' ') || c == UInt8('\t') || c == UInt8('\n') || c == UInt8('\r'))
+            expectKey = false
+        end
+    end
+    return last
 end
 
 end # module AtlasIO

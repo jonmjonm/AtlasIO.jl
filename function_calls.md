@@ -6,9 +6,11 @@ parameters) followed by one `Map` per line. Files may be uncompressed
 (`.jsonl`), gzip-compressed (`.jsonl.gz`), or bzip2-compressed (`.jsonl.bz2`).
 
 The **Julia** library is the full read/write implementation. It reads format
-versions 1 and 2 (see [atlas_format.md](atlas_format.md)) and writes v1. The
-**Python** readers are read-only: the `atlasio` package (`python/`) and the
-original `PythonReader/AtlasIO.py`, plus election-analysis helpers.
+versions 1 and 2 (see [atlas_format.md](atlas_format.md)) and writes either
+(v1 by default; `formatVersion=2` on the write functions), and `convertAtlas`
+converts files between them. The **Python** side has the `atlasio` package
+(`python/`), which reads both versions and converts files between them, and the
+original read-only `PythonReader/AtlasIO.py`, plus election-analysis helpers.
 
 ---
 
@@ -178,27 +180,44 @@ Returns `true` if the atlas stream is at end-of-file. (`Base.eof` method.)
 
 ### Writing
 
-#### `newAtlas(io::IO, atlasHeader::AtlasHeader, atlasParam)`
-Writes the 3-line header (comment line, `atlasHeader`, `atlasParam`) to `io`.
+Every write function takes a keyword `formatVersion`: `1` (the default) or `2`
+(`"1"`/`"2"` also work). v1 output is exactly what earlier versions wrote. Use
+the **same** `formatVersion` for `newAtlas` and for every map of that atlas: a
+file whose maps differ from its header's version is rejected by every reader.
+*(New in 0.2.2.)*
 
-#### `addMap(io::IO, map::Map{T})`
+```julia
+newAtlas(io, atlasHeader, atlasParams; formatVersion=2)
+addMap(io, map; formatVersion=2)
+```
+
+The v2 writer writes the tree with names sorted at every level (so the same
+map always gives the same bytes), and raises `AtlasFormatError` for a
+districting v2 cannot hold: a key that is a prefix of another (a region both
+whole and split) or the empty key `()`. Such a map can still be written as v1.
+
+#### `newAtlas(io::IO, atlasHeader::AtlasHeader, atlasParam; formatVersion=1)`
+Writes the 3-line header (comment line, `atlasHeader`, `atlasParam`) to `io`.
+For v2 the header gains `"formatVersion":"2"`.
+
+#### `addMap(io::IO, map::Map{T}; formatVersion=1)`
 Serializes and writes a single `Map` as one JSON line.
 
-#### `addMap(io::IO, dist::Districting, name::String, w::Real, mapParams)`
+#### `addMap(io::IO, dist::Districting, name::String, w::Real, mapParams; formatVersion=1)`
 Convenience overload: builds a `Map` from the districting, name, weight, and map
 parameters, then writes it.
 
-#### `addMaps(io::IO, maps) -> Int`
+#### `addMaps(io::IO, maps; formatVersion=1) -> Int`
 Writes a collection of `Map`s. JSON serialization is done in parallel across
 threads, then the strings are written to `io` serially in order. Output is
 byte-identical to calling `addMap` per map. Returns total bytes written. Start
 Julia with `-t auto` to benefit.
 
-#### `mapJSON(m::Map)::String`
+#### `mapJSON(m::Map; formatVersion=1)::String`
 The JSON text of `m` exactly as it appears on one line of an Atlas file,
 **without** the trailing newline. *(New in 0.2.)*
 
-#### `mapBytes(m::Map)::Vector{UInt8}`
+#### `mapBytes(m::Map; formatVersion=1)::Vector{UInt8}`
 One complete Atlas map line for `m`, **including** the trailing newline:
 exactly the bytes `addMap` writes. Use it to build the input of `writeMaps!`,
 e.g. `writeMaps!(out, mapBytes.(maps))`. *(New in 0.2.)* Use `mapJSON`/`mapBytes`
@@ -270,6 +289,20 @@ Default target of uncompressed bytes per gzip member (256 KB -- 8x deflate's
 
 ### Utilities
 
+#### `convertAtlas(src, dst; formatVersion, batch=1024, cores=Threads.nthreads()) -> Int`
+Copies the atlas file `src` to `dst`, converting every map to format version
+`formatVersion` (`1` or `2`), and returns the number of maps. Either file may
+be plain, `.gz` or `.bz2`. Only the header's `formatVersion` and each map's
+assignment field are rewritten; the banner, the atlas parameters and each map's
+name, weight and data are copied **byte for byte**. v2 trees are sorted; v1
+entries are written in sorted key order; every line ends with a newline.
+Converting back gives the same districting for every map. Map lines are
+converted in parallel; a `.gz` `dst` is written as parallel gzip members. An
+`AtlasFormatError` names the line and map of anything that cannot be converted
+(a line not in the header's version, a districting v2 cannot hold, an
+assignment that is not the line's last field), and `dst` is removed.
+The Python package's `atlasio.convert` produces the same bytes. *(New in 0.2.2.)*
+
 #### `copyAtlasHeader(sourceFilename::String, outFilename::String)`
 Copies the 3-line header from one atlas file to another (handling compression on
 both ends via `smartOpen`).
@@ -322,9 +355,9 @@ close(out)
 
 ## Python: the `atlasio` package (`python/`)
 
-Read-only; reads format v1 and v2, plain, `.gz` or `.bz2`. Standard library only (uses `orjson` if it is
-installed). Install with
-`pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.1#subdirectory=python"`.
+Reads format v1 and v2, plain, `.gz` or `.bz2`, and converts files between them. Standard library only (uses
+`orjson` if it is installed). Install with
+`pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.2#subdirectory=python"`.
 
 ```python
 import atlasio
@@ -344,13 +377,16 @@ with atlasio.open_atlas("atlas.jsonl.gz") as atlas:
   returns the districting with v1-style string keys, as AtlasIO.jl writes them.
 - `parse_map(line)` — parse one map line of either version.
 - `parse_district_key(s)` / `district_key_string(key)` — convert between a v1 key string and a key tuple.
+- `convert(src, dst, to)` — copy an atlas file converting every map to format version `to` (1 or 2); the same
+  rules and the same output bytes as Julia's `convertAtlas`. Returns the number of maps. *(New in 0.2.2.)*
+  Command line: `python -m atlasio convert SRC DST --to 2` (or `atlasio convert ...` once installed).
 - `AtlasFormatError` (a `ValueError`) — raised for invalid files and lines, for a `formatVersion` it does not
   know, and for a map line whose version differs from the header's.
 
 ## Python Reader Library (`PythonReader/`)
 
 Read-only. Import by adding `../PythonReader/` to `sys.path`, or with httpimport pinned to a release tag
-(`.../AtlasIO.jl/refs/tags/v0.2.1/PythonReader/`). It is one self-contained file, kept so existing code keeps
+(`.../AtlasIO.jl/refs/tags/v0.2.2/PythonReader/`). It is one self-contained file, kept so existing code keeps
 working; new code can use the `atlasio` package above.
 
 ### `AtlasIO.py`

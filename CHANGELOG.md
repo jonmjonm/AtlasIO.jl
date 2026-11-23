@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.2.2]
+
+AtlasIO can **write format v2** when asked, and **convert** files between v1 and v2, in Julia and in Python.
+**v1 stays the default**: code that does not ask for v2 writes exactly what it wrote before.
+
+### Added
+
+- **Julia:** a `formatVersion` keyword (`1` by default, or `2`) on `newAtlas`, `addMap`, `addMaps`, `mapBytes`
+  and `mapJSON`. Use the same version for the header and every map. The v2 writer sorts names at every level
+  (the same map always gives the same bytes) and raises `AtlasFormatError` for a districting v2 cannot hold: a
+  key that is a prefix of another (a region both whole and split) or the empty key.
+- **Julia:** `convertAtlas(src, dst; formatVersion)` converts a file to either version. It rewrites only the
+  header's `formatVersion` and each map's assignment; the banner, the atlas parameters and each map's name,
+  weight and data are copied byte for byte. Errors name the line and map, and remove `dst`. Parallel, and
+  writes `.gz` output as parallel gzip members.
+- **Python:** `atlasio.convert(src, dst, to)` and the command `python -m atlasio convert SRC DST --to 2`
+  (`atlasio convert ...` once installed): the same rules, and byte-identical output to `convertAtlas`.
+- Tests: the writer reproduces the spec's examples byte for byte; converting each v1 fixture gives exactly
+  its v2 twin, and converting back is lossless; a randomized write/read round trip; error cases.
+
+### Changed
+
+- Docs pin httpimport and pip installs to the `v0.2.2` tag.
+
 ## [0.2.1]
 
 AtlasIO reads **format v2** (see `atlas_format.md`), in Julia and in Python. It still **writes v1 only**, so

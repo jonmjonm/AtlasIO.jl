@@ -3,18 +3,18 @@
 
 [![Test CI](https://github.com/jonmjonm/AtlasIO.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/jonmjonm/AtlasIO.jl/actions/workflows/ci.yml)
 
-This repository contains a number of tools to read in and manipulate Atlas files. The primary code is written in the Julia programming language, but it can be used in Python as well. The Python library can only read Atlas files, it cannot write them. The Julia library can read and write Atlas files.
+This repository contains a number of tools to read in and manipulate Atlas files. The primary code is written in the Julia programming language, but it can be used in Python as well. The Python library reads Atlas files and converts them between format versions; the Julia library can read and write Atlas files.
 
 For a complete reference of the public functions and types exposed by both the Julia and Python libraries, see [**function_calls.md**](function_calls.md).
 
 ## Reading Atlas files in Python
 
-From AtlasIO 0.2.1 there are two Python readers. Both read format v1 and v2 files, plain or compressed (`.gz`, `.bz2`), and need only the standard library.
+From AtlasIO 0.2.1 there are two Python readers. Both read format v1 and v2 files, plain or compressed (`.gz`, `.bz2`), and need only the standard library. From 0.2.2 the `atlasio` package also converts files between v1 and v2: `python -m atlasio convert IN OUT --to 2`.
 
 * **The `atlasio` package** (new, in [python/](python)). District keys are tuples, as in Julia: `("MECKLENBURG", "052")`. Install it from a release tag:
 
   ```
-  pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.1#subdirectory=python"
+  pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.2#subdirectory=python"
   ```
 
   ```python
@@ -27,7 +27,7 @@ From AtlasIO 0.2.1 there are two Python readers. Both read format v1 and v2 file
 * **[PythonReader/AtlasIO.py](PythonReader/AtlasIO.py)** (the original single file, kept so existing code works unchanged). District keys are strings such as `'["MECKLENBURG", "052"]'`. Load it by adding `PythonReader/` to `sys.path`, or with [httpimport](https://pypi.org/project/httpimport/) pinned to a release tag, so that later changes on `main` cannot change your results:
 
   ```python
-  with httpimport.remote_repo(['AtlasIO'], 'https://raw.githubusercontent.com/jonmjonm/AtlasIO.jl/refs/tags/v0.2.1/PythonReader/'):
+  with httpimport.remote_repo(['AtlasIO'], 'https://raw.githubusercontent.com/jonmjonm/AtlasIO.jl/refs/tags/v0.2.2/PythonReader/'):
       import AtlasIO
   ```
 

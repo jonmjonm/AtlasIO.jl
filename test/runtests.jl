@@ -785,3 +785,6 @@ include("types_and_api.jl")
 
 # Format v2: reading v2 twins of the v1 fixtures, the spec's examples, and the reader's rejection rules.
 include("v2_fixtures.jl")
+
+# Format v2: writing (formatVersion=2) and converting between versions (convertAtlas).
+include("v2_writer.jl")
