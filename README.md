@@ -3,18 +3,18 @@
 
 [![Test CI](https://github.com/jonmjonm/AtlasIO.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/jonmjonm/AtlasIO.jl/actions/workflows/ci.yml)
 
-This repository contains a number of tools to read in and manipulate Atlas files. The primary code is written in the Julia programming language, but it can be used in Python as well. The Python library reads Atlas files and converts them between format versions; the Julia library can read and write Atlas files.
+This repository contains a number of tools to read in and manipulate Atlas files. The primary code is written in the Julia programming language, but it can be used in Python as well. The Julia library and the Python `atlasio` package both read and write Atlas files and convert them between format versions.
 
 For a complete reference of the public functions and types exposed by both the Julia and Python libraries, see [**function_calls.md**](function_calls.md).
 
 ## Reading Atlas files in Python
 
-From AtlasIO 0.2.1 there are two Python readers. Both read format v1 and v2 files, plain or compressed (`.gz`, `.bz2`), and need only the standard library. From 0.2.2 the `atlasio` package also converts files between v1 and v2: `python -m atlasio convert IN OUT --to 2`.
+From AtlasIO 0.2.1 there are two Python readers. Both read format v1 and v2 files, plain or compressed (`.gz`, `.bz2`), and need only the standard library. From 0.2.2 the `atlasio` package also converts files between v1 and v2: `python -m atlasio convert IN OUT --to 2`. From 0.2.3 it also writes Atlas files (`atlasio.new_atlas`; see [Writing Atlas files in Python](#writing-atlas-files-in-python)).
 
 * **The `atlasio` package** (new, in [python/](python)). District keys are tuples, as in Julia: `("MECKLENBURG", "052")`. Install it from a release tag:
 
   ```
-  pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.2#subdirectory=python"
+  pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.3#subdirectory=python"
   ```
 
   ```python
@@ -27,9 +27,23 @@ From AtlasIO 0.2.1 there are two Python readers. Both read format v1 and v2 file
 * **[PythonReader/AtlasIO.py](PythonReader/AtlasIO.py)** (the original single file, kept so existing code works unchanged). District keys are strings such as `'["MECKLENBURG", "052"]'`. Load it by adding `PythonReader/` to `sys.path`, or with [httpimport](https://pypi.org/project/httpimport/) pinned to a release tag, so that later changes on `main` cannot change your results:
 
   ```python
-  with httpimport.remote_repo(['AtlasIO'], 'https://raw.githubusercontent.com/jonmjonm/AtlasIO.jl/refs/tags/v0.2.2/PythonReader/'):
+  with httpimport.remote_repo(['AtlasIO'], 'https://raw.githubusercontent.com/jonmjonm/AtlasIO.jl/refs/tags/v0.2.3/PythonReader/'):
       import AtlasIO
   ```
+
+
+## Writing Atlas files in Python
+
+From 0.2.3 the `atlasio` package writes Atlas files too, format v1 (the default, as in Julia) or v2, plain or compressed by extension:
+
+```python
+import atlasio
+with atlasio.new_atlas("ensemble.jsonl.gz", description="my ensemble", params={"districts": 14}) as out:
+    for i, plan in enumerate(plans):                          # plan: {("WAKE",): 3, ("MECKLENBURG", "052"): 13, ...}
+        out.add_map("step%d" % i, plan, weight=1, data={"score": 0.5})
+```
+
+To write a modified copy of an atlas, `atlasio.new_atlas(dst, like=src_atlas)` copies its header and parameters. The files are laid out exactly as AtlasIO.jl writes them, and AtlasIO.jl reads them back unchanged.
 
 ## Atlas files 
     
@@ -95,7 +109,7 @@ LICENSE
         This is a large collection of map assignments for testing. Notice that it is compressed. The library can read compressed or uncompressed files. These multi-scale assignments come from code which try to preserve the different levels. This ensembles was used in a North Carolina 2021 court case. More info can be found in the [original repos](https://git.math.duke.edu/gitlab/gjh/ncanalysis2020/-/tree/main/ensembles/congressional).   
 * [PythonReader](PythonReader) Directory : This directory contains python code to read Atlas files and analyze them.
     - [AtlasIO.py](PythonReader/AtlasIO.py) :
-        The original single-file Atlas reader. It can read compressed or uncompressed files, format v1 and v2, with district keys as strings. It can not write an Atlas file. Use the Julia library to write an Atlas file. New code can use the `atlasio` package instead (see [Reading Atlas files in Python](#reading-atlas-files-in-python)).
+        The original single-file Atlas reader. It can read compressed or uncompressed files, format v1 and v2, with district keys as strings. It can not write an Atlas file; use the `atlasio` package or the Julia library for that. New code can use the `atlasio` package instead (see [Reading Atlas files in Python](#reading-atlas-files-in-python)).
     - [helper_functions.py](PythonReader/helper_functions.py) :
         Some helper functions that are useful. Examples include summing elections, performing uniform swings and obtaining the node name to district mapping. See the file for full list and description.
 

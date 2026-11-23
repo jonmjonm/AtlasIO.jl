@@ -9,7 +9,7 @@ such as '["MECKLENBURG", "052"]', so code written for it keeps working, includin
   (", " between names; only " and \\ escaped), which is what helper_functions.get_node_to_district expects.
 
 It must stay one file with no dependencies beyond the standard library: users load it with httpimport, e.g.
-    with httpimport.remote_repo(['AtlasIO'], 'https://raw.githubusercontent.com/jonmjonm/AtlasIO.jl/refs/tags/v0.2.2/PythonReader/'):
+    with httpimport.remote_repo(['AtlasIO'], 'https://raw.githubusercontent.com/jonmjonm/AtlasIO.jl/refs/tags/v0.2.3/PythonReader/'):
         import AtlasIO
 """
 import bz2
