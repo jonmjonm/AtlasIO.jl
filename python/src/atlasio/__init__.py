@@ -1,8 +1,9 @@
-"""atlasio: read Atlas files (redistricting map ensembles) in Python.
+"""atlasio: read Atlas files (redistricting map ensembles) in Python, and convert them between format versions.
 
 An Atlas file holds one header and then one district map per line; the format is described in
 https://github.com/jonmjonm/AtlasIO.jl/blob/main/atlas_format.md. This package reads format versions 1 and 2,
-plain or compressed (.gz, .bz2). It is read-only; AtlasIO.jl (Julia) writes Atlas files.
+plain or compressed (.gz, .bz2), and converts files between the two versions (``convert``, or
+``python -m atlasio convert SRC DST --to 2`` on the command line). AtlasIO.jl (Julia) writes Atlas files.
 
     import atlasio
 
@@ -21,10 +22,10 @@ import json
 import os
 import re
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 __all__ = ["open_atlas", "Atlas", "Map", "AtlasFormatError", "parse_map", "parse_district_key",
-           "district_key_string", "FORMAT_VERSIONS", "__version__"]
+           "district_key_string", "convert", "FORMAT_VERSIONS", "__version__"]
 
 #: The Atlas format versions this package reads.
 FORMAT_VERSIONS = ("1", "2")
@@ -255,3 +256,6 @@ def district_key_string(key):
     """The v1 district-key string for ``key`` exactly as AtlasIO.jl writes it: a JSON-style list with ``", "``
     between names, escaping only ``"`` and ``\\``; e.g. ``("MECKLENBURG", "052")`` -> ``'["MECKLENBURG", "052"]'``."""
     return "[" + ", ".join('"' + p.replace("\\", "\\\\").replace('"', '\\"') + '"' for p in key) + "]"
+
+
+from ._convert import convert  # noqa: E402  (after the definitions it uses)
