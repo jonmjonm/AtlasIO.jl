@@ -124,6 +124,28 @@ end
         end
     end
 
+    @testset "single-pass districting writer is byte-identical to the reference writer" begin
+        rng = Xoshiro(7)
+        # Includes characters the fast path escapes inline (" and \), ones it hands to the reference path
+        # (control characters, DEL), and multi-byte UTF-8.
+        chars = vcat(collect("aZ09 ,[]{}:'/\"\\éñ中😀"), ['\t', '\n', '\x01', '\x1f', '\x7f'])
+        rname() = String(rand(rng, chars, rand(rng, 0:6)))
+        bad = 0
+        for _ in 1:500
+            d = Districting()
+            for _ in 1:rand(rng, 0:30)
+                d[Tuple(rname() for _ in 1:rand(rng, 1:3))] = rand(rng, (0, 7, 42, 999, 1000, 123456, -3))
+            end
+            bad += AtlasIO.districtingJSON(d).value != AtlasIO._districtingJSONReference(d).value
+        end
+        @test bad == 0
+        _, nc = readAllMaps(joinpath(REPO_ROOT, "ExampleAtlas", "atlas_truncated_nc_multiscale.jsonl"))
+        @test all(AtlasIO.districtingJSON(m.districting).value == AtlasIO._districtingJSONReference(m.districting).value for m in nc)
+        # Control characters in names still round-trip (written through the reference path).
+        m = Map{Dict{String,Any}}("c", Districting(("tab\there", "nl\n") => 1, ("del\x7f",) => 2), 1, Dict{String,Any}())
+        @test parseMap(mapJSON(m), Dict{String,Any}).districting == m.districting
+    end
+
     @testset "parseDistrictKey decodes every JSON escape (0.1.x mis-decoded all but \\\" and \\\\)" begin
         pk = AtlasIO.parseDistrictKey
         @test pk("[\"37011\", \"1\"]") == ("37011", "1")

@@ -32,10 +32,26 @@ CI by the `compat-0-1-5` job).
 - The documented `writeMaps!` example produced a corrupt atlas (no newlines between maps); it now uses
   `mapBytes`.
 
+### Performance
+
+Writing districtings now applies both levels of key escaping in a single pass. Measured on the full NC
+example atlas (first 5,000 maps of `atlas_nc_multiscale.jsonl.gz`, 142 MB of JSON; Apple M-series, Julia
+1.13; `benchmark/bench_full.jl`), MB/s of map JSON:
+
+| | 0.1.5 | 0.2.0 |
+|---|---|---|
+| `addMap`, 1 thread | 58 | 105 (1.8×) |
+| `addMaps`, 8 threads | 274 | 385 (1.4×) |
+| `nextMapData`, 1 thread | 107 | 195 (1.8×; gunzip alone is ~213) |
+| `nextMaps`, 8 threads | 64 | 71 |
+| `nextMap`, 1 thread | 19 | 19 (unchanged; rebuilding `districting` dominates) |
+
 ### Added
 
 - `parseMap`, `mapJSON`, `mapBytes` (see above).
 - `nextMapData`/`parseMapData` no longer scan `districting` at all (JSON.jl's lazy parser stops before it).
+- `benchmark/bench_nc.jl` and `benchmark/bench_full.jl`, which run unchanged against older AtlasIO versions
+  for comparison.
 - Frozen v1-format fixtures and tests (`test/fixtures/`, `test/v1_fixtures.jl`), value-type tests
   (`test/types_and_api.jl`), and the `compat-0-1-5` CI job (`test/compat/`).
 

@@ -145,8 +145,80 @@ end
 
 The v1 on-disk districting: a JSON array of single-key objects, `[{"[\\"k1\\", \\"k2\\"]":v}, ...]`.
 It is rendered by hand because JSON.jl would write a `Vector{Pair}` as ONE object, not one object per entry.
+
+Each key is written in a single pass that applies both escaping levels at once (the key-tuple string and
+the JSON string around it). The output is byte-identical to `_districtingJSONReference`, which builds each
+key with `districtKeyString` and then JSON-escapes it; a name containing a control character or DEL (which
+JSON.jl writes as `\\uXXXX`) goes through that reference path.
 """
 function districtingJSON(d::Districting)
+    buf = IOBuffer(sizehint = 32 * length(d) + 2)
+    write(buf, UInt8('['))
+    first = true
+    for (k, v) in d
+        first ? (first = false) : write(buf, UInt8(','))
+        write(buf, UInt8('{'))
+        _writeDistrictKey!(buf, k) || JSON.json(buf, districtKeyString(k))
+        write(buf, UInt8(':'))
+        _writeSmallInt!(buf, v)
+        write(buf, UInt8('}'))
+    end
+    write(buf, UInt8(']'))
+    return JSON.JSONText(String(take!(buf)))
+end
+
+"""
+Write district key `k` as the JSON string of its v1 key string, e.g. `("a\\"b", "c")` as
+`"[\\"a\\\\\\"b\\", \\"c\\"]"`, in one pass. Returns `false`, having written nothing, if a name contains a
+control character or DEL; the caller then uses the reference path.
+"""
+function _writeDistrictKey!(buf::IOBuffer, k)::Bool
+    special = false                           # any '"' or '\\' (each needs a 4-byte escape)
+    for s in k, c in codeunits(s)
+        (c < 0x20 || c == 0x7f) && return false
+        special |= (c == UInt8('"')) | (c == UInt8('\\'))
+    end
+    write(buf, UInt8('"'), UInt8('['))
+    first = true
+    for s in k
+        first ? (first = false) : write(buf, UInt8(','), UInt8(' '))
+        write(buf, UInt8('\\'), UInt8('"'))
+        if special
+            for c in codeunits(s)
+                if c == UInt8('"')                 # inner \"  ->  JSON \\\"
+                    write(buf, UInt8('\\'), UInt8('\\'), UInt8('\\'), UInt8('"'))
+                elseif c == UInt8('\\')            # inner \\  ->  JSON \\\\
+                    write(buf, UInt8('\\'), UInt8('\\'), UInt8('\\'), UInt8('\\'))
+                else
+                    write(buf, c)
+                end
+            end
+        else
+            write(buf, s)                          # common case: copy the name as-is
+        end
+        write(buf, UInt8('\\'), UInt8('"'))
+    end
+    write(buf, UInt8(']'), UInt8('"'))
+    return true
+end
+
+"Write integer `v` in decimal; districts are small, so 0–999 skip `print`'s allocation."
+@inline function _writeSmallInt!(buf::IOBuffer, v::Integer)
+    if 0 <= v < 10
+        write(buf, UInt8('0') + UInt8(v))
+    elseif 10 <= v < 100
+        write(buf, UInt8('0') + UInt8(div(v, 10)), UInt8('0') + UInt8(rem(v, 10)))
+    elseif 100 <= v < 1000
+        write(buf, UInt8('0') + UInt8(div(v, 100)), UInt8('0') + UInt8(rem(div(v, 10), 10)),
+              UInt8('0') + UInt8(rem(v, 10)))
+    else
+        print(buf, v)
+    end
+    return nothing
+end
+
+"Reference (slower, two-pass) districting writer; `districtingJSON` must produce the same bytes."
+function _districtingJSONReference(d::Districting)
     buf = IOBuffer()
     write(buf, '[')
     first = true
