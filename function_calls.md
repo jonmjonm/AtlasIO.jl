@@ -126,21 +126,34 @@ Reads the next map from an `EachLine` iterator over the stream.
 Parses a single already-read line `buff` into a `Map`, using the atlas's map
 parameter and weight types. Useful for custom/parallel read loops.
 
-#### `nextMapData(atlas::Atlas)::MapData`
-Like `nextMap` but returns a `MapData` -- `districting` is not parsed. ~7x
-faster and ~28x fewer allocations per map than `nextMap` in benchmarks on a
-several-hundred-node graph. Composes with `skipMap`/`nextMap`/`nextMapData` the
-same way `nextMap` does (reads from wherever `atlas` is currently positioned).
+#### `parseMap(line::AbstractString, T, W=Int64)::Map{T,W}`
+Parses one map line (with or without its trailing newline) into a `Map{T,W}`,
+without needing an `Atlas` or any JSON library. Raises `AtlasFormatError` on
+malformed input. *(New in 0.2.)* Use it instead of `JSON3.read(line, Map{T,W})`,
+which no longer works since AtlasIO 0.2.
 
-#### `parseMapData(buff::String, T, W=Int64)::MapData{T,W}`
+#### `nextMapData(atlas::Atlas)::MapData`
+Like `nextMap` but returns a `MapData` -- `districting` is not parsed, nor even
+scanned. Composes with `skipMap`/`nextMap`/`nextMapData` the same way `nextMap`
+does (reads from wherever `atlas` is currently positioned).
+
+#### `parseMapData(buff::AbstractString, T, W=Int64)::MapData{T,W}`
 Parses a single already-read line `buff` into a `MapData`, touching only
-`name`, `weight`, and `data`. Uses JSON3's plain lazy-object read plus three
-field lookups, rather than the `StructTypes.CustomStruct` machinery `Map`'s
-parse goes through (which eagerly materializes the whole JSON object,
-`districting` included, regardless of what the constructor actually uses).
-Places the same constraint on `T` that `Map{T,W}` does -- none: a `Dict`-like
-`T` gets the fast key-remapping conversion, anything else is built directly
-from the raw value.
+`name`, `weight`, and `data`. It uses JSON.jl's lazy parser, and `districting`
+is the last field of a map line, so it is never scanned. `data` is converted
+exactly as `parseMap` converts it, so a `MapData` and a `Map` read from the
+same line hold equal data. `T` need not be a `Dict`, and `data` need not be a
+JSON object.
+
+#### Values read from JSON
+Every reader (`openAtlas` for the atlas parameters, `nextMap`/`parseMap`,
+`nextMapData`/`parseMapData`) returns JSON values as plain Julia values:
+objects as `Dict{String,Any}` and arrays as `Vector{Any}` at every level,
+strings as `String`, `null` as `nothing`. Numbers are exact: `0.0` and `1.0`
+read as `Float64`, integers as `Int64` (or `BigInt` beyond the `Int64` range),
+and `-0.0` keeps its sign. *(Changed in 0.2: AtlasIO 0.1.x read whole-number
+floats as `Int` and lost precision on integers beyond 2^53 in `Map` data and
+atlas parameters.)*
 
 #### `parseBufferToMapData(atlas::Atlas, buff::String)::MapData`
 Like `parseBufferToMap` but returns a `MapData` -- `districting` is not
@@ -178,6 +191,23 @@ threads, then the strings are written to `io` serially in order. Output is
 byte-identical to calling `addMap` per map. Returns total bytes written. Start
 Julia with `-t auto` to benefit.
 
+#### `mapJSON(m::Map)::String`
+The JSON text of `m` exactly as it appears on one line of an Atlas file,
+**without** the trailing newline. *(New in 0.2.)*
+
+#### `mapBytes(m::Map)::Vector{UInt8}`
+One complete Atlas map line for `m`, **including** the trailing newline:
+exactly the bytes `addMap` writes. Use it to build the input of `writeMaps!`,
+e.g. `writeMaps!(out, mapBytes.(maps))`. *(New in 0.2.)* Use `mapJSON`/`mapBytes`
+instead of `JSON3.write(m)`, which no longer works since AtlasIO 0.2.
+
+#### How values are written
+Output is byte-identical to AtlasIO 0.1.x: `Dict` keys keep their iteration
+order, and value types whose JSON form differs between JSON3 and JSON.jl keep
+the 0.1.x form (`Rational` as a float, `BigFloat` with all its digits,
+`DateTime`/`Time` always with a fractional second, arrays of 2+ dimensions
+flattened in column-major order). `NaN` and `Inf` cannot be written.
+
 ### Parallel Gzip Output
 
 Writes `.gz` atlases as a series of byte-targeted gzip members compressed in
@@ -199,7 +229,9 @@ body. Start Julia with `-t auto` to benefit.
 #### `writeMaps!(out::AtlasOutput, bytes::Vector{Vector{UInt8}})`
 Appends the in-order serialized map byte-vectors `bytes` to `out`: as
 byte-targeted parallel gzip members for a `.gz` target (via
-`writeGzipMembers!`), or written straight through the stream otherwise.
+`writeGzipMembers!`), or written straight through the stream otherwise. The
+bytes are written as given, with nothing added: each element must be a complete
+line **including its trailing newline**, as `mapBytes` returns.
 
 #### `writeGzipMembers!(out::IO, bytes::Vector{Vector{UInt8}}, cores::Int=Threads.nthreads(); target::Int=GZIP_MEMBER_TARGET)`
 Writes the in-order serialized records `bytes` to `out` as byte-targeted gzip
@@ -279,8 +311,7 @@ close(io)
 ```julia
 headerBytes = atlasHeaderBytes("in.jsonl.gz")   # or build the 3 header lines yourself
 out = openAtlasOutput("out.jsonl.gz", headerBytes)
-mapBytes = [JSON3.write(m) |> codeunits |> collect for m in maps]  # Vector{Vector{UInt8}}, in order
-writeMaps!(out, mapBytes)
+writeMaps!(out, mapBytes.(maps))   # one complete line per map, newline included, in order
 close(out)
 ```
 

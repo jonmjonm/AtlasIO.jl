@@ -4,8 +4,10 @@
 #   * test/fixtures/v1/ holds FROZEN files written by AtlasIO 0.1.5 (JSON3) plus one written by Python.
 #     See test/fixtures/README.md; they must never be regenerated with a newer AtlasIO.
 #   * test/fixtures/v1/expected.json comes from an independent reader (Python's json), not from AtlasIO.
-#   * Comparisons are by VALUE, not type (0 == 0.0): whole-number floats are expected to change from Int to
-#     Float64 when AtlasIO moves to JSON.jl. Type checks belong to that migration.
+#   * Values are compared EXACTLY, including number types and the sign of zero (`typedEqual`): since AtlasIO
+#     0.2 (JSON.jl), 0.0 reads as Float64, integers beyond 2^53 read exactly and -0.0 keeps its sign.
+#     AtlasIO 0.1.x (JSON3) read whole-number floats as Int and lost precision beyond 2^53; these tests
+#     recorded that as @test_broken until the migration fixed it.
 #   * Byte-exact checks cover only output whose order is fixed (single-entry Dicts, the header line),
 #     because Dict iteration order may differ between Julia versions.
 
@@ -25,22 +27,16 @@ plainval(x::AbstractDict) = Dict{String,Any}(string(k) => plainval(v) for (k, v)
 plainval(x::AbstractVector) = Any[plainval(v) for v in x]
 plainval(x) = x
 
-# KNOWN v1 BUG (AtlasIO 0.1.5): the Map and atlas-parameter read paths (JSON3 into Dict{String,Any}) parse
-# every number as a Float64, so integers beyond 2^53 lose precision (typemax(Int64) reads as 9.223372036854776e18,
-# -7375463094308724563 as -7375463094308724736) and -0.0 reads as 0. nextMapData/parseMapData read them exactly.
-# JSON.jl reads all of these exactly, so the @test_broken checks below must flip to @test after that migration.
-const EXACT_INT_LIMIT = big(2)^53
-isBigInt(::Bool) = false
-isBigInt(x::Integer) = abs(big(x)) > EXACT_INT_LIMIT
-isBigInt(x::AbstractFloat) = isfinite(x) && isinteger(x) && abs(big(x)) > EXACT_INT_LIMIT
-isBigInt(_) = false
-hasBigInt(x::AbstractDict) = any(hasBigInt, values(x))
-hasBigInt(x::AbstractVector) = any(hasBigInt, x)
-hasBigInt(x) = isBigInt(x)
-"Replace integers beyond 2^53 by a marker, so everything else can still be compared exactly."
-maskBigInts(x::AbstractDict) = Dict{String,Any}(string(k) => maskBigInts(v) for (k, v) in x)
-maskBigInts(x::AbstractVector) = Any[maskBigInts(v) for v in x]
-maskBigInts(x) = isBigInt(x) ? :beyond_2_53 : x
+"""
+Exact equality of JSON-ish values: same keys and lengths, and every leaf `isequal` with the SAME type, so
+`0` vs `0.0` and `0.0` vs `-0.0` both count as different. Objects must be `Dict{String,Any}` and arrays
+`Vector{Any}` on BOTH sides, as AtlasIO 0.2 returns them.
+"""
+typedEqual(a::Dict{String,Any}, b::Dict{String,Any}) =
+    keys(a) == keys(b) && all(typedEqual(a[k], b[k]) for k in keys(a))
+typedEqual(a::Vector{Any}, b::Vector{Any}) = length(a) == length(b) && all(typedEqual(x, y) for (x, y) in zip(a, b))
+typedEqual(a, b) = !(a isa AbstractDict || a isa AbstractVector || b isa AbstractDict || b isa AbstractVector) &&
+                   typeof(a) == typeof(b) && isequal(a, b)
 
 "Expected districting from expected.json: a list of [key-parts, district] pairs."
 expectedDistricting(pairs) = Dict{Tuple{Vararg{String}},Int64}(Tuple(String.(p[1])) => p[2] for p in pairs)
@@ -97,33 +93,23 @@ oneLine(m) = (io = IOBuffer(); addMap(io, m); String(take!(io)))
         @test atlas.description == h["description"]
         @test atlas.date == h["date"]
         @test string(atlas.weightType) == get(h, "weightType", "Int64")
-        @test plainval(atlas.atlasParam) == exp["atlasParam"]
+        @test typedEqual(atlas.atlasParam, exp["atlasParam"])
 
         @test length(maps) == length(exp["maps"])
         for (m, em) in zip(maps, exp["maps"])
             @test m.name == em["name"]
-            @test m.weight == em["weight"]
-            if hasBigInt(em["data"])
-                @test_broken plainval(m.data) == em["data"]                       # known v1 bug, see above
-                @test maskBigInts(plainval(m.data)) == maskBigInts(em["data"])   # everything else is exact
-            else
-                @test plainval(m.data) == em["data"]
-            end
-            want = expectedDistricting(em["districting"])
-            if em["julia_0_1_5_misdecodes_keys"]
-                # parseDistrictKey drops the backslash of \uXXXX escapes inside keys (keys written by Python's
-                # json with ensure_ascii=True). Flip to @test when that bug is fixed.
-                @test_broken m.districting == want
-            else
-                @test m.districting == want
-            end
+            @test typedEqual(m.weight, atlas.weightType(em["weight"]))
+            @test typedEqual(m.data, em["data"])          # exact, including 2^53+ integers and -0.0
+            # Includes keys with \uXXXX escapes inside the key string (written by Python's json), which
+            # AtlasIO 0.1.x mis-decoded (the "julia_0_1_5_misdecodes_keys" maps).
+            @test m.districting == expectedDistricting(em["districting"])
         end
 
-        # The other read paths. nextMapData reads numbers exactly (no 2^53 loss), so compare it to expected.json.
+        # The other read paths agree exactly.
         md = readAllMapData(path)
         @test [x.name for x in md] == [m.name for m in maps]
         @test [x.weight for x in md] == [m.weight for m in maps]
-        @test [plainval(x.data) for x in md] == [em["data"] for em in exp["maps"]]
+        @test all(typedEqual(x.data, em["data"]) for (x, em) in zip(md, exp["maps"]))
         threaded = readAllThreaded(path)
         @test [x.name for x in threaded] == [m.name for m in maps]
         @test [x.districting for x in threaded] == [m.districting for m in maps]
@@ -139,12 +125,12 @@ oneLine(m) = (io = IOBuffer(); addMap(io, m); String(take!(io)))
         atlas, maps = readAllMaps(path)
         @test atlas.description == exp["header"]["description"]
         @test atlas.date == exp["header"]["date"]
-        @test plainval(atlas.atlasParam) == exp["atlasParam"]
+        @test typedEqual(atlas.atlasParam, exp["atlasParam"])
         @test length(maps) == length(exp["maps"])
         for (m, em) in zip(maps, exp["maps"])
             @test m.name == em["name"]
-            @test m.weight == em["weight"]
-            @test plainval(m.data) == em["data"]
+            @test typedEqual(m.weight, atlas.weightType(em["weight"]))
+            @test typedEqual(m.data, em["data"])
             @test length(m.districting) == em["n_districting"]
             @test districtingDigest(m.districting) == em["districting_digest"]
         end
@@ -216,9 +202,9 @@ oneLine(m) = (io = IOBuffer(); addMap(io, m); String(take!(io)))
             for _ in 1:rand(rng, 0:25)
                 d[Tuple(rname() for _ in 1:rand(rng, 1:3))] = rand(rng, 1:20)
             end
-            # Integers stay within ±2^53: larger ones hit the known v1 precision bug (tested separately below).
+            # Full Int64 range: AtlasIO 0.2 reads integers beyond 2^53 exactly (0.1.x did not).
             data = Dict{String,Any}("f" => [rand(rng) * 10.0^rand(rng, -8:8) for _ in 1:3],
-                                    "i" => rand(rng, -2^53:2^53, 2), "s" => rname())
+                                    "i" => rand(rng, Int64, 2), "z" => [-0.0, 0.0, 1.0], "s" => rname())
             push!(maps, Map{Dict{String,Any}}(rname(), d, rand(rng, 1:10), data))
         end
         path = tempname() * ".jsonl"
@@ -231,30 +217,30 @@ oneLine(m) = (io = IOBuffer(); addMap(io, m); String(take!(io)))
         @test length(back) == length(maps)
         bad = [i for i in eachindex(maps) if !(back[i].name == maps[i].name && back[i].weight == maps[i].weight &&
                                               back[i].districting == maps[i].districting &&
-                                              plainval(back[i].data) == plainval(maps[i].data))]
+                                              typedEqual(back[i].data, plainval(maps[i].data)))]
         isempty(bad) || @info "round-trip mismatches (first shown)" first_index = first(bad) original = maps[first(bad)] read_back = back[first(bad)]
         @test isempty(bad)
         @test [x.districting for x in readAllThreaded(path)] == [m.districting for m in maps]
-        @test [plainval(x.data) for x in readAllMapData(path)] == [plainval(m.data) for m in maps]
+        @test all(typedEqual(x.data, plainval(m.data)) for (x, m) in zip(readAllMapData(path), maps))
         rm(path)
     end
 
-    @testset "known v1 number-reading bugs (fixed by JSON.jl: flip these to @test then)" begin
+    @testset "v1 number-reading bugs fixed in AtlasIO 0.2 (were @test_broken under 0.1.5)" begin
         atlas, maps = readAllMaps(joinpath(FIXDIR, "edge.jsonl"))
         m = maps[1]
-        @test_broken m.data["ints"][1] === typemax(Int64)        # reads as 9.223372036854776e18
-        @test_broken isequal(m.data["floats"][6], -0.0)           # sign of -0.0 lost (reads as 0)
+        @test m.data["ints"][1] === typemax(Int64)               # 0.1.5 read 9.223372036854776e18
+        @test m.data["floats"][6] === -0.0                       # 0.1.5 read 0 (sign lost)
 
         seed = -7375463094308724563
         line = chomp(oneLine(Map{Dict{String,Any}}("b", Districting(), 1, Dict{String,Any}("seed" => seed))))
         @test occursin("\"seed\":$seed", line)                    # writing is exact
-        @test_broken parseBufferToMap(atlas, String(line)).data["seed"] == seed   # Map read path loses it
-        @test parseMapData(String(line), Dict{String,Any}).data["seed"] == seed  # MapData path is exact today
+        @test parseBufferToMap(atlas, String(line)).data["seed"] === seed   # 0.1.5 read -7375463094308724736
+        @test parseMapData(String(line), Dict{String,Any}).data["seed"] === seed
 
-        # Atlas parameters (line 3) go through the same lossy path.
+        # Atlas parameters (line 3) went through the same lossy path in 0.1.5.
         io = IOBuffer()
         newAtlas(io, AtlasHeader("d", "t", "A", "M"), Dict{String,Any}("seed" => seed))
         a = openAtlas(IOBuffer(take!(io)))
-        @test_broken a.atlasParam["seed"] == seed
+        @test a.atlasParam["seed"] === seed
     end
 end

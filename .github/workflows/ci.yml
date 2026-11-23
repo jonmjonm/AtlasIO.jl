@@ -35,6 +35,24 @@ jobs:
       - name: Run tests
         run: julia --project=. -e 'import Pkg; Pkg.test()'
 
+  # Test F: files written by this AtlasIO must stay readable by AtlasIO 0.1.5, which downstream
+  # packages keep using until they raise their compat bound. See test/compat/.
+  compat-0-1-5:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: julia-actions/setup-julia@v1
+        with:
+          version: '1'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Read files written by this version with AtlasIO 0.1.5
+        run: bash test/compat/run_compat_0_1_5.sh
+
   python-test:
     runs-on: ubuntu-latest
     strategy:

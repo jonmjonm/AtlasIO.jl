@@ -20,14 +20,18 @@ AtlasIO is 0.1.5 with JSON3.
 Names contain no control characters. v1 keys holding them are not strictly valid JSON (Python's
 `json.loads` rejects them unless `strict=False`), so they are deliberately left out of the frozen format.
 
-## Known v1 bugs recorded as expected failures
+## v1 bugs these fixtures exposed
 
-* **Integers beyond 2^53 and `-0.0` (Julia).** AtlasIO 0.1.5's `Map` and atlas-parameter read paths parse
-  every number as a `Float64`, so `typemax(Int64)` reads as `9.223372036854776e18`, `-7375463094308724563`
-  as `-7375463094308724736`, and `-0.0` as `0`. `nextMapData` reads them exactly. These checks are
-  `@test_broken`; flip them to `@test` when the bug is fixed (the JSON.jl migration fixes it).
-* **`\uXXXX` escapes inside district keys (Julia).** `parseDistrictKey` drops the backslash, so keys
-  written by Python's `json` with non-ASCII names decode wrongly (`python_written.jsonl`, map "Doña Ana").
+Fixed in AtlasIO.jl 0.2 (the tests were `@test_broken` under 0.1.5 and are now plain `@test`s):
+
+* **Integers beyond 2^53 and `-0.0`.** AtlasIO 0.1.5's `Map` and atlas-parameter read paths parsed every
+  number as a `Float64`, so `typemax(Int64)` read as `9.223372036854776e18`, `-7375463094308724563` as
+  `-7375463094308724736`, and `-0.0` as `0`.
+* **`\uXXXX` escapes inside district keys.** 0.1.5's `parseDistrictKey` dropped the backslash, so keys
+  written by Python's `json` with non-ASCII names decoded wrongly (`python_written.jsonl`, map "Doña Ana").
+
+Still open:
+
 * **`.bz2` (Python).** PythonReader cannot open `.bz2` files yet. Those tests are `xfail(strict=True)`, so
   they fail loudly once support lands, as a reminder to remove the marker.
 
@@ -39,5 +43,5 @@ From the repository root, with AtlasIO 0.1.5:
     python3 test/fixtures/make_python_fixture.py
     python3 test/fixtures/make_expected.py
 
-`/.gitattributes` keeps `test/fixtures/**` out of Git LFS and stops git from changing line endings, so the
+`/.gitattributes` keeps `test/fixtures/v1/**` out of Git LFS and stops git from changing line endings, so the
 files stay byte-exact.

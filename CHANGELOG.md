@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.2.0]
+
+AtlasIO now uses **JSON.jl** (1.6 or later) instead of JSON3 and StructTypes; JSON3 is deprecated in the
+General registry. **The file format is unchanged**: files written by 0.2.0 are byte-identical to what 0.1.x
+wrote, every 0.1.x file reads to the same values, and AtlasIO 0.1.5 reads files written by 0.2.0 (checked in
+CI by the `compat-0-1-5` job).
+
+### Breaking
+
+- `JSON3.read(line, Map{T,W})` and `JSON3.write(m)` no longer work on AtlasIO types (AtlasIO no longer
+  defines `StructTypes` methods). Use the new functions instead, which need no JSON library:
+  - `parseMap(line, T, W=Int64)` parses one map line into a `Map{T,W}`;
+  - `mapJSON(m)` returns a map's JSON text, without the newline;
+  - `mapBytes(m)` returns a complete map line, newline included, ready for `writeMaps!`.
+- Numbers read from `Map` data and atlas parameters now keep their exact JSON type:
+  - `0.0` and `1.0` read as `Float64` (0.1.x read them as `Int`);
+  - `-0.0` keeps its sign (0.1.x read `0`);
+  - integers beyond 2^53 read exactly (0.1.x silently changed their value, e.g. `-7375463094308724563`
+    became `-7375463094308724736`), and beyond the `Int64` range they read as `BigInt`.
+
+  Values still compare equal (`0 == 0.0`), but code that checks for `Int` may behave differently.
+- `parseMapData`/`nextMapData` return `data` as plain `Dict{String,Any}`/`Vector{Any}` at every level
+  (0.1.x returned JSON3 lazy objects for nested values), matching `nextMap`.
+- Writing `NaN`/`Inf` still fails, with a different exception type.
+
+### Fixed
+
+- District keys containing JSON escapes other than `\"` and `\\` (e.g. `Ñ`, as Python's `json.dumps`
+  writes non-ASCII characters by default) are decoded correctly; 0.1.x dropped the backslash.
+- The documented `writeMaps!` example produced a corrupt atlas (no newlines between maps); it now uses
+  `mapBytes`.
+
+### Added
+
+- `parseMap`, `mapJSON`, `mapBytes` (see above).
+- `nextMapData`/`parseMapData` no longer scan `districting` at all (JSON.jl's lazy parser stops before it).
+- Frozen v1-format fixtures and tests (`test/fixtures/`, `test/v1_fixtures.jl`), value-type tests
+  (`test/types_and_api.jl`), and the `compat-0-1-5` CI job (`test/compat/`).
+
 ## [0.1.6]
 
 - Add `MapData`/`parseMapData`/`nextMapData`/`parseBufferToMapData`: a lighter
