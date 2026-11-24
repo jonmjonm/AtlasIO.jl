@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Docstrings for `openAtlas`, `nextMap`, `parseBufferToMap`, `skipMap`, `copyAtlasHeader` and `AtlasHeader`;
+  every exported name now has one.
+
 ## [0.2.4]
 
 The Python package is **published on PyPI**: `pip install atlasio`. No code changes in either language.
