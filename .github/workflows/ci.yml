@@ -33,6 +33,8 @@ jobs:
         run: julia --project=. -e 'import Pkg; Pkg.instantiate()'
 
       - name: Run tests
+        env:
+          JULIA_NUM_THREADS: 2   # so eachMap/nextMaps parse in parallel
         run: julia --project=. -e 'import Pkg; Pkg.test()'
 
   # Test F: files written by this AtlasIO must stay readable by AtlasIO 0.1.5, which downstream

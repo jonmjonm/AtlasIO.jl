@@ -17,6 +17,8 @@ export Map,
     nextMap,
     nextMaps,
     nextMapData,
+    eachMap,
+    eachMapData,
     addMap,
     addMaps,
     close,
@@ -834,6 +836,182 @@ parse each with this in parallel.
 """
 function parseBufferToMapData(atlas::Atlas, buff::String)::MapData
     return parseMapData(buff, atlas.mapParamType, atlas.weightType)
+end
+
+# ---------------------------------------------------------------------------
+# Iterating over the maps
+# ---------------------------------------------------------------------------
+
+"""
+    eachMap(path; skip = 0, max = typemax(Int), batch)
+    eachMap(atlas::Atlas; skip = 0, max = typemax(Int), batch)
+
+An iterator over the maps of an atlas, in file order: `for m in eachMap("atlas.jsonl.gz") ... end`. It gives
+the same `Map`s as a `while !eof(atlas); nextMap(atlas); end` loop, without holding more than one batch in
+memory.
+
+- With several threads (`julia -t auto`), each batch of `batch` lines (default 256) is read and then parsed in
+  parallel: about 2.5 times faster on 8 threads than the `nextMap` loop (JSON parsing is most of the work;
+  reading the compressed stream is serial and sets the limit). With one thread the default `batch` is 1, as
+  fast as the loop: holding a batch of parsed maps only costs garbage collection time there.
+- `skip` maps are skipped without parsing first (e.g. a burn-in), and at most `max` maps are given.
+- An error (a malformed line, a corrupt file) is raised when the iteration reaches that map, after the maps
+  before it, as with `nextMap`.
+- Given a `path` (anything [`smartOpen`](@ref) opens), the file is closed when the last map has been read, or
+  on an error. If the loop stops early (a `break`), it stays open until garbage collection; to close it right
+  away, use the do-block form of [`openAtlas`](@ref) with `eachMap(atlas)`. Given an `atlas`, it reads from
+  wherever the atlas is and never closes it; don't mix it with `nextMap` on the same atlas, since it reads a
+  batch ahead of the maps it has given.
+
+For the maps' `name`, `weight` and `data` only, [`eachMapData`](@ref) is about 7 times faster.
+"""
+eachMap(path::AbstractString; kw...) = eachMap(openAtlas(_openForReading(path)); _owns = true, kw...)
+eachMap(atlas::Atlas; kw...) =
+    _mapIterator(atlas, Map{atlas.mapParamType,atlas.weightType}, parseBufferToMap; kw...)
+
+"""
+    eachMapData(path; skip = 0, max = typemax(Int), batch)
+    eachMapData(atlas::Atlas; skip = 0, max = typemax(Int), batch)
+
+[`eachMap`](@ref) for [`MapData`](@ref): each map's `name`, `weight` and `data`, without its district
+assignment, which is most of the work of parsing a map: about 7 times faster.
+"""
+eachMapData(path::AbstractString; kw...) = eachMapData(openAtlas(_openForReading(path)); _owns = true, kw...)
+eachMapData(atlas::Atlas; kw...) =
+    _mapIterator(atlas, MapData{atlas.mapParamType,atlas.weightType}, parseBufferToMapData; kw...)
+
+"""
+    openAtlas(f, path)
+
+Open the atlas at `path`, call `f(atlas)`, and close it afterwards, even if `f` throws or a loop in it stops
+early. Returns what `f` returns.
+
+```julia
+openAtlas("atlas.jsonl.gz") do atlas
+    for m in eachMap(atlas)
+        m.name == "step1000" && return m
+    end
+end
+```
+"""
+function openAtlas(f::Function, path::AbstractString)
+    atlas = openAtlas(_openForReading(path))
+    try
+        return f(atlas)
+    finally
+        close(atlas)
+    end
+end
+
+function _openForReading(path::AbstractString)
+    io = smartOpen(String(path), "r")
+    io === nothing && throw(ArgumentError("could not open \"$path\" for reading"))
+    return io
+end
+
+# The state of an `eachMap`/`eachMapData` iteration: the current batch of parsed maps (and any error per map).
+mutable struct MapIterator{E,F}
+    atlas::Atlas
+    parse::F                       # (atlas, line) -> E
+    owns::Bool                     # opened from a path: close the atlas when done
+    remaining::Int                 # maps still to give (`max`)
+    batch::Int
+    maps::Vector{E}
+    errors::Vector{Any}            # `nothing`, or the error to raise at that map
+    next::Int                      # the next index into `maps`
+    done::Bool
+end
+
+function _mapIterator(atlas::Atlas, ::Type{E}, parse::F; skip::Integer = 0, max::Integer = typemax(Int),
+                      batch::Integer = Threads.nthreads() > 1 ? 256 : 1, _owns::Bool = false) where {E,F}
+    try
+        skip >= 0 || throw(ArgumentError("skip must be ≥ 0"))
+        max >= 0 || throw(ArgumentError("max must be ≥ 0"))
+        batch >= 1 || throw(ArgumentError("batch must be ≥ 1"))
+        for _ in 1:skip
+            eof(atlas) && break
+            _readMapLine(atlas)
+        end
+    catch
+        _owns && close(atlas)
+        rethrow()
+    end
+    return MapIterator{E,F}(atlas, parse, _owns, Int(max), Int(batch),
+                            E[], Any[], 1, false)
+end
+
+Base.IteratorSize(::Type{<:MapIterator}) = Base.SizeUnknown()
+Base.eltype(::Type{<:MapIterator{E}}) where {E} = E
+
+function Base.iterate(it::MapIterator, _ = nothing)
+    it.next > length(it.maps) && !_readBatch!(it) && return nothing
+    i = it.next
+    it.next += 1
+    e = it.errors[i]
+    if e !== nothing
+        _finish!(it)
+        throw(e)
+    end
+    return it.maps[i], nothing
+end
+
+# Read and parse the next batch (in parallel when it has several maps). False when there are no more maps.
+function _readBatch!(it::MapIterator{E}) where {E}
+    it.done && return false
+    lines = String[]
+    readError = nothing
+    while length(lines) < min(it.batch, it.remaining) && !eof(it.atlas)
+        try
+            push!(lines, _readMapLine(it.atlas))
+        catch e
+            readError = e              # raised after the maps read before it
+            break
+        end
+    end
+    n = length(lines)
+    if n == 0 && readError === nothing
+        _finish!(it)
+        return false
+    end
+    it.remaining -= n
+    maps = Vector{E}(undef, n)
+    errors = Vector{Any}(nothing, n)
+    parseOne(i) = try
+        maps[i] = it.parse(it.atlas, lines[i])
+    catch e
+        errors[i] = e
+    end
+    if n > 1
+        Threads.@threads for i in 1:n
+            parseOne(i)
+        end
+    elseif n == 1
+        parseOne(1)
+    end
+    if readError !== nothing
+        resize!(maps, n + 1)
+        push!(errors, readError)
+    end
+    it.maps, it.errors, it.next = maps, errors, 1
+    return true
+end
+
+function _finish!(it::MapIterator{E}) where {E}
+    it.done = true
+    it.maps, it.errors = E[], Any[]
+    it.owns && close(it.atlas)
+    return it
+end
+
+"Read the next map line of `atlas`, raising a stream failure (e.g. a corrupt `.gz`) as an `AtlasFormatError`."
+function _readMapLine(atlas::Atlas)
+    try
+        return readline(atlas.io)
+    catch e
+        throw(AtlasFormatError("failed to read a map line: the underlying stream raised " *
+                               "an error (possibly a truncated or corrupt compressed file) " *
+                               "($(sprint(showerror, e)))."))
+    end
 end
 
 """

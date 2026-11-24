@@ -22,20 +22,17 @@ end
 
 println("Running....on file ", atlasFileName)
 
-io=smartOpen(atlasFileName, "r")
-atlas=openAtlas(io);
-################
-println("atlas date:",atlas.date)
-println("number of districts:",atlas.atlasParam["districts"])
-################
-mapCount=0
-while !eof(atlas)
-    m = nextMap(atlas) 
-    global mapCount+=1
-    if (mapCount > maxMap)
-        break
+openAtlas(atlasFileName) do atlas     # closed at the end, even after the break below
+    println("atlas date:",atlas.date)
+    println("number of districts:",atlas.atlasParam["districts"])
+    mapCount=0
+    for m in eachMap(atlas)
+        mapCount+=1
+        if (mapCount > maxMap)
+            break
+        end
+        println("map count:", mapCount, "\t map name:",m.name,
+            " \t number of assignments in districting:",length(m.districting))
     end
-    println("map count:", mapCount, "\t map name:",m.name, 
-        " \t number of assignments in districting:",length(m.districting))
 end
 

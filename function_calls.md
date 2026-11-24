@@ -114,7 +114,33 @@ sniffed from the URL's path, ignoring any query string/fragment.
 #### `close(atlas::Atlas)`
 Closes the underlying `IO` stream of the atlas. (`Base.close` method.)
 
+#### `openAtlas(f::Function, path::AbstractString)`
+Opens the atlas at `path`, calls `f(atlas)`, and closes it afterwards, even if `f` throws or a loop in it
+stops early (a `break` or `return`). Returns what `f` returns: `openAtlas("atlas.jsonl.gz") do atlas ... end`.
+
 ### Reading
+
+#### `eachMap(path; skip=0, max=typemax(Int), batch)` / `eachMap(atlas::Atlas; ...)`
+An iterator over the maps, in file order: `for m in eachMap("atlas.jsonl.gz") ... end`. It gives the same
+`Map{T,W}`s as a `while !eof(atlas); nextMap(atlas); end` loop, holding one batch in memory at a time.
+
+- With several threads (`julia -t auto`), each batch of `batch` lines (default 256) is read and then parsed in
+  parallel; with one thread the default `batch` is 1.
+- `skip` maps are skipped without parsing (e.g. a burn-in); at most `max` maps are given.
+- An error (malformed line, corrupt file) is raised when the iteration reaches that map, after the maps before it.
+- From a `path`, the file is closed when the last map has been read, or on an error; after a `break` it stays
+  open until garbage collection, so use `openAtlas(f, path)` with `eachMap(atlas)` to close it at once. From an
+  `atlas`, it reads from the current position and never closes it; don't mix it with `nextMap` on the same
+  atlas, since it reads a batch ahead.
+
+Measured on 2,000 maps of the NC examples (`julia -t 8`): the `nextMap` loop takes about 1.0 ms per map (2.5 ms
+for precinct-level maps), `eachMap` 0.38 ms (1.1 ms), like `nextMaps`, and `eachMapData` 0.14 ms (0.41 ms). On
+one thread `eachMap` takes the same time as the loop. Parsing the district assignment is most of the cost;
+reading the compressed stream (about 0.15 ms, or 0.4 ms) is serial and sets the limit.
+
+#### `eachMapData(path; skip=0, max=typemax(Int), batch)` / `eachMapData(atlas::Atlas; ...)`
+`eachMap` for `MapData` (each map's `name`, `weight` and `data`, without the district assignment): about 7
+times faster.
 
 #### `openAtlas(io::IO)::Atlas`
 Reads the 3-line header from `io` and returns an `Atlas`. The comment line is

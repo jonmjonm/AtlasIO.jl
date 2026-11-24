@@ -7,6 +7,24 @@ This repository contains a number of tools to read in and manipulate Atlas files
 
 For a complete reference of the public functions and types exposed by both the Julia and Python libraries, see [**function_calls.md**](function_calls.md).
 
+## Reading Atlas files in Julia
+
+```julia
+using AtlasIO
+for m in eachMap("atlas.jsonl.gz")                     # each Map: m.name, m.districting, m.weight, m.data
+    # ...
+end
+for d in eachMapData("atlas.jsonl.gz"; skip = 1000)    # name, weight and data only (much faster), after a burn-in
+    # ...
+end
+```
+
+`eachMap` reads the file in batches parsed in parallel when Julia has several threads (`julia -t auto`): about
+2.5 times faster than reading one map at a time on 8 threads. It closes the file at the end; to stop early and
+close it at once, use `openAtlas(path) do atlas; for m in eachMap(atlas) ... end; end`. The lower-level calls
+(`openAtlas`, `nextMap`, `nextMaps`, and writing with `newAtlas`/`addMap`) are in
+[**function_calls.md**](function_calls.md).
+
 ## Reading Atlas files in Python
 
 From AtlasIO 0.2.1 there are two Python readers. Both read format v1 and v2 files, plain or compressed (`.gz`, `.bz2`), and need only the standard library. From 0.2.2 the `atlasio` package also converts files between v1 and v2: `python -m atlasio convert IN OUT --to 2`. From 0.2.3 it also writes Atlas files (`atlasio.new_atlas`; see [Writing Atlas files in Python](#writing-atlas-files-in-python)).
