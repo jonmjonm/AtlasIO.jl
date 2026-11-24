@@ -788,3 +788,6 @@ include("v2_fixtures.jl")
 
 # Format v2: writing (formatVersion=2) and converting between versions (convertAtlas).
 include("v2_writer.jl")
+
+# eachMap / eachMapData / openAtlas(f, path): iterating over the maps.
+include("eachmap.jl")

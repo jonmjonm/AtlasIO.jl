@@ -114,7 +114,47 @@ sniffed from the URL's path, ignoring any query string/fragment.
 #### `close(atlas::Atlas)`
 Closes the underlying `IO` stream of the atlas. (`Base.close` method.)
 
+#### `openAtlas(f::Function, path::AbstractString)`
+Opens the atlas at `path`, calls `f(atlas)`, and closes it afterwards, even if `f` throws or a loop in it
+stops early (a `break` or `return`). Returns what `f` returns: `openAtlas("atlas.jsonl.gz") do atlas ... end`.
+
 ### Reading
+
+#### `eachMap(path; skip=0, max=typemax(Int), batch)` / `eachMap(atlas::Atlas; ...)`
+An iterator over the maps, in file order: `for m in eachMap("atlas.jsonl.gz") ... end`. It gives the same
+`Map{T,W}`s as a `while !eof(atlas); nextMap(atlas); end` loop, holding one batch in memory at a time.
+
+- With several threads (`julia -t auto`), each batch of `batch` lines (default 256) is read and then parsed in
+  parallel; with one thread the default `batch` is 1.
+- `skip` maps are skipped without parsing (e.g. a burn-in); at most `max` maps are given.
+- An error (malformed line, corrupt file) is raised when the iteration reaches that map, after the maps before it.
+- From a `path`, the file is closed when the last map has been read, or on an error; after a `break` it stays
+  open until garbage collection, so use `openAtlas(f, path)` with `eachMap(atlas)` to close it at once. From an
+  `atlas`, it reads from the current position and never closes it; don't mix it with `nextMap` on the same
+  atlas, since it reads a batch ahead.
+
+**Performance.** Measured with [benchmark/bench_eachmap.jl](benchmark/bench_eachmap.jl) on whole files
+(decompression included), in µs per map, with the speedup over the `nextMap` loop:
+
+| Atlas | Threads | `nextMap` loop | `eachMap` | `eachMapData` | Reading lines only |
+|---|---|---|---|---|---|
+| NC multiscale, 79,997 maps, 28 KB per line | 8 | 942 | 356 (2.6×) | 133 (7.1×) | 129 |
+| CycleWalk NC precincts, 10,001 maps, 66 KB per line | 8 | 2459 | 1083 (2.3×) | 404 (6.1×) | 394 |
+| NC multiscale | 1 | 894 | 946 (0.95×) | 152 (5.9×) | 125 |
+| CycleWalk NC precincts | 1 | 2203 | 2205 (1.0×) | 381 (5.8×) | 380 |
+
+- The cost per map grows with the size of the map line; the speedups barely change between a 2,000-map and an
+  80,000-map file.
+- Parsing the district assignment is most of the cost. `eachMap` parses it in parallel, and the limit is then
+  parsing and garbage collection (30–36% of its time); batch sizes from 16 to 1024 were within about 20% of
+  each other.
+- `eachMapData` skips the district assignment and runs as fast as the compressed stream can be read, which is
+  serial, so more threads don't help it.
+- On one thread `eachMap` takes about the same time as the loop.
+
+#### `eachMapData(path; skip=0, max=typemax(Int), batch)` / `eachMapData(atlas::Atlas; ...)`
+`eachMap` for `MapData` (each map's `name`, `weight` and `data`, without the district assignment): about 6
+to 7 times faster.
 
 #### `openAtlas(io::IO)::Atlas`
 Reads the 3-line header from `io` and returns an `Atlas`. The comment line is
