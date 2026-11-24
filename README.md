@@ -20,10 +20,22 @@ end
 ```
 
 `eachMap` reads the file in batches parsed in parallel when Julia has several threads (`julia -t auto`): about
-2.5 times faster than reading one map at a time on 8 threads. It closes the file at the end; to stop early and
+2.5 times faster than reading one map at a time on 8 threads. `eachMapData` is about 6 to 7 times faster than
+reading whole maps, as it skips the district assignment. It closes the file at the end; to stop early and
 close it at once, use `openAtlas(path) do atlas; for m in eachMap(atlas) ... end; end`. The lower-level calls
 (`openAtlas`, `nextMap`, `nextMaps`, and writing with `newAtlas`/`addMap`) are in
 [**function_calls.md**](function_calls.md).
+
+Time per map (µs; [benchmark/bench_eachmap.jl](benchmark/bench_eachmap.jl), Julia 1.13, Apple silicon):
+
+| Atlas | Threads | `nextMap` loop | `eachMap` | `eachMapData` |
+|---|---|---|---|---|
+| NC multiscale, 79,997 maps, 28 KB per line | 8 | 942 | 356 (2.6×) | 133 (7.1×) |
+| CycleWalk NC precincts, 10,001 maps, 66 KB per line | 8 | 2459 | 1083 (2.3×) | 404 (6.1×) |
+| NC multiscale | 1 | 894 | 946 | 152 (5.9×) |
+
+The time per map grows with the size of the map; on one thread `eachMap` is about as fast as the `nextMap`
+loop. More detail is under `eachMap` in [function_calls.md](function_calls.md).
 
 ## Reading Atlas files in Python
 

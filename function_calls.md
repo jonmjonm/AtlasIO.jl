@@ -133,14 +133,28 @@ An iterator over the maps, in file order: `for m in eachMap("atlas.jsonl.gz") ..
   `atlas`, it reads from the current position and never closes it; don't mix it with `nextMap` on the same
   atlas, since it reads a batch ahead.
 
-Measured on 2,000 maps of the NC examples (`julia -t 8`): the `nextMap` loop takes about 1.0 ms per map (2.5 ms
-for precinct-level maps), `eachMap` 0.38 ms (1.1 ms), like `nextMaps`, and `eachMapData` 0.14 ms (0.41 ms). On
-one thread `eachMap` takes the same time as the loop. Parsing the district assignment is most of the cost;
-reading the compressed stream (about 0.15 ms, or 0.4 ms) is serial and sets the limit.
+**Performance.** Measured with [benchmark/bench_eachmap.jl](benchmark/bench_eachmap.jl) on whole files
+(decompression included), in µs per map, with the speedup over the `nextMap` loop:
+
+| Atlas | Threads | `nextMap` loop | `eachMap` | `eachMapData` | Reading lines only |
+|---|---|---|---|---|---|
+| NC multiscale, 79,997 maps, 28 KB per line | 8 | 942 | 356 (2.6×) | 133 (7.1×) | 129 |
+| CycleWalk NC precincts, 10,001 maps, 66 KB per line | 8 | 2459 | 1083 (2.3×) | 404 (6.1×) | 394 |
+| NC multiscale | 1 | 894 | 946 (0.95×) | 152 (5.9×) | 125 |
+| CycleWalk NC precincts | 1 | 2203 | 2205 (1.0×) | 381 (5.8×) | 380 |
+
+- The cost per map grows with the size of the map line; the speedups barely change between a 2,000-map and an
+  80,000-map file.
+- Parsing the district assignment is most of the cost. `eachMap` parses it in parallel, and the limit is then
+  parsing and garbage collection (30–36% of its time); batch sizes from 16 to 1024 were within about 20% of
+  each other.
+- `eachMapData` skips the district assignment and runs as fast as the compressed stream can be read, which is
+  serial, so more threads don't help it.
+- On one thread `eachMap` takes about the same time as the loop.
 
 #### `eachMapData(path; skip=0, max=typemax(Int), batch)` / `eachMapData(atlas::Atlas; ...)`
-`eachMap` for `MapData` (each map's `name`, `weight` and `data`, without the district assignment): about 7
-times faster.
+`eachMap` for `MapData` (each map's `name`, `weight` and `data`, without the district assignment): about 6
+to 7 times faster.
 
 #### `openAtlas(io::IO)::Atlas`
 Reads the 3-line header from `io` and returns an `Atlas`. The comment line is
