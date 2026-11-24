@@ -863,7 +863,7 @@ memory.
   wherever the atlas is and never closes it; don't mix it with `nextMap` on the same atlas, since it reads a
   batch ahead of the maps it has given.
 
-For the maps' `name`, `weight` and `data` only, [`eachMapData`](@ref) is about 7 times faster.
+For the maps' `name`, `weight` and `data` only, [`eachMapData`](@ref) is about 6 to 7 times faster.
 """
 eachMap(path::AbstractString; kw...) = eachMap(openAtlas(_openForReading(path)); _owns = true, kw...)
 eachMap(atlas::Atlas; kw...) =
@@ -874,7 +874,7 @@ eachMap(atlas::Atlas; kw...) =
     eachMapData(atlas::Atlas; skip = 0, max = typemax(Int), batch)
 
 [`eachMap`](@ref) for [`MapData`](@ref): each map's `name`, `weight` and `data`, without its district
-assignment, which is most of the work of parsing a map: about 7 times faster.
+assignment, which is most of the work of parsing a map: about 6 to 7 times faster.
 """
 eachMapData(path::AbstractString; kw...) = eachMapData(openAtlas(_openForReading(path)); _owns = true, kw...)
 eachMapData(atlas::Atlas; kw...) =

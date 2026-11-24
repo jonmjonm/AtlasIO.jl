@@ -5,7 +5,7 @@
 - **`eachMap(path)` and `eachMapData(path)`**: iterators over an atlas's maps (or an open `Atlas`), in file
   order, with `skip` (a burn-in) and `max`. With several threads each batch is parsed in parallel: about 2.5
   times faster than the `nextMap` loop on 8 threads, as fast as it on one, holding one batch in memory.
-  `eachMapData` skips the district assignment: about 7 times faster. An error is raised at its map, after the
+  `eachMapData` skips the district assignment: about 6 to 7 times faster. An error is raised at its map, after the
   maps before it. From a path the file is closed at the end or on an error.
 - **`openAtlas(f, path)`**: the do-block form, closing the atlas afterwards even after a `break` or an error.
 - Docstrings for `openAtlas`, `nextMap`, `parseBufferToMap`, `skipMap`, `copyAtlasHeader` and `AtlasHeader`;
