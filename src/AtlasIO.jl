@@ -41,6 +41,20 @@ export Map,
     convertAtlas,
     GZIP_MEMBER_TARGET
 
+"""
+    AtlasHeader(description, atlasParamType, mapParamType; weightType = Int64)
+    AtlasHeader(description, date, atlasParamType, mapParamType; weightType = Int64)
+
+The header (line 2) of an Atlas file, for writing one with [`newAtlas`](@ref): a `description`, the `date`
+(now, if not given), the types of the atlas parameters and of each map's `data` (usually
+`Dict{String,Any}`), and `weightType`, the type of the maps' weights: `Int64` or `Float64`. The types are
+stored by name, so the strings themselves are accepted too. Reading an atlas with [`openAtlas`](@ref) gives
+the same fields on the `Atlas`.
+
+```julia
+header = AtlasHeader("NC congressional ensemble", Dict{String,Any}, Dict{String,Any}; weightType = Float64)
+```
+"""
 struct AtlasHeader
     description::String
     date::String
@@ -516,6 +530,26 @@ function _readlineOrFormatError(io::IO, what::String)
     end
 end
 
+"""
+    openAtlas(io::IO) -> Atlas
+
+Read the three header lines of an Atlas file from `io` (usually from [`smartOpen`](@ref), which handles
+`.gz`/`.bz2` and URLs) and return an `Atlas` positioned at the first map: its `description`, `date`,
+`atlasParam` (the line-3 parameters), `mapParamType`, `weightType` (`Int64` unless the header says `Float64`)
+and `formatVersion` (`"1"` or `"2"`). Read the maps with [`nextMap`](@ref) (or `nextMaps`,
+[`skipMap`](@ref)) until `eof(atlas)`, then `close(atlas)`, which closes `io`.
+
+A file that isn't a valid Atlas (an unparsable or incomplete header, an unknown `weightType`, a format version
+this AtlasIO can't read) raises an [`AtlasFormatError`](@ref) saying what is wrong.
+
+```julia
+atlas = openAtlas(smartOpen("atlas.jsonl.gz", "r"))
+while !eof(atlas)
+    m = nextMap(atlas)
+end
+close(atlas)
+```
+"""
 function openAtlas(io::IO)::Atlas
     _readlineOrFormatError(io, "the initial banner line (line 1)") #throw away initial line (the human-readable format banner)
 
@@ -612,6 +646,18 @@ end
 _parseMapLine(atlas::Atlas, buff::AbstractString)::Map =
     _parseMap(buff, atlas.mapParamType, atlas.weightType, atlas.formatVersion)
 
+"""
+    nextMap(atlas::Atlas) -> Map
+    nextMap(atlas::Atlas, lines::Base.EachLine) -> Map
+
+Read and parse the next map of `atlas`: a `Map` with its `name`, `districting`, `weight` (of the atlas's
+`weightType`) and `data`. Call it while `!eof(atlas)`; past the last map it throws an `EOFError`. A map line
+that doesn't parse, or isn't in the format version the header declares, raises an
+[`AtlasFormatError`](@ref) naming the map when it can.
+
+The second form takes the line from `lines`, an `eachline(atlas.io)` iterator the caller holds. For many maps
+at once, `nextMaps` parses in parallel.
+"""
 function nextMap(atlas::Atlas)::Map
     eof(atlas.io) && throw(EOFError())
     buff = try
@@ -624,6 +670,13 @@ function nextMap(atlas::Atlas)::Map
     return _parseMapLine(atlas, buff)
 end
 
+"""
+    parseBufferToMap(atlas::Atlas, line::String) -> Map
+
+Parse `line`, one map line of `atlas` that you read yourself, into a `Map` with the atlas's data and weight
+types, checking it is in the format version the header declares. Like [`parseMap`](@ref) with the types taken
+from `atlas`; errors are raised as an [`AtlasFormatError`](@ref).
+"""
 function parseBufferToMap(atlas::Atlas,buff::String)::Map
     return _parseMapLine(atlas, buff)
 end
@@ -941,6 +994,12 @@ function Base.eof(atlas::Atlas)::Bool
     return (Base.eof(atlas.io))
 end
 
+"""
+    skipMap(atlas::Atlas; numSkip = 1)
+
+Skip the next `numSkip` maps of `atlas` without parsing them (e.g. a burn-in). Throws an `EOFError` if the
+atlas runs out first; the maps before that are still skipped.
+"""
 function skipMap(atlas::Atlas;numSkip=1)
     count=0
     while (count < numSkip)
@@ -1116,6 +1175,13 @@ function getFileExtension(filename::String)
     return filename[i:end],filename[1:i-1]
 end
 
+"""
+    copyAtlasHeader(sourceFilename, outFilename)
+
+Write a new file `outFilename` holding only the three header lines of the atlas `sourceFilename`, copied byte
+for byte (compression for each file by its extension, as in [`smartOpen`](@ref)). Both files are closed
+afterwards. `outFilename` is overwritten if it exists.
+"""
 function copyAtlasHeader(sourceFilename::String, outFilename::String)
     ioSource=smartOpen(sourceFilename,"r")
     ioOut=smartOpen(outFilename,"w")
