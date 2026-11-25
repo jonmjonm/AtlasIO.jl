@@ -2,7 +2,7 @@
 
 ## [0.2.6]
 
-Julia: a fix for callers written before AtlasIO 0.2.1. No changes in the Python package.
+Julia: fixes to two `Atlas` constructors. No changes in the Python package.
 
 ### Fixed
 
@@ -10,8 +10,13 @@ Julia: a fix for callers written before AtlasIO 0.2.1. No changes in the Python 
   `formatVersion` field to `Atlas` and kept the six-argument call only in its untyped form (`Atlas(...)`), so the
   typed one raised a `MethodError`. CycleWalk 0.2.5 makes this call to write its atlas, which failed with AtlasIO
   0.2.1 to 0.2.5. The atlas it makes declares format v1, as before.
+- **`Atlas{T}(io, header::AtlasHeader, atlasParam)` works**, which it never had: the header stores its types by
+  name, and the names were passed on as the types (a `MethodError`). The names are now read as `openAtlas` reads
+  them (the map data type is `Dict{String,Any}`; the weight type is `Int64` or `Float64`, and any other is an
+  `ArgumentError`). A new `formatVersion` keyword, 1 (the default) or 2 as in `newAtlas`, sets the version the
+  atlas declares. Documented in the `Atlas` docstring.
 - A test of the constructors kept for older callers (the typed and untyped six-argument forms, the typed
-  five-argument form).
+  five-argument form), and of the header form against what `openAtlas` reads back from `newAtlas`'s output.
 
 ## [0.2.5]
 

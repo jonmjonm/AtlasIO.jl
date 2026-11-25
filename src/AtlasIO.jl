@@ -76,6 +76,11 @@ AtlasHeader(name::String,date::String,atlasParamType::String,mapParamType::Strin
 An Atlas open for reading, as returned by [`openAtlas`](@ref): the stream positioned at the first map, the
 header's `description` and `date`, the atlas parameters `atlasParam::T`, the map `data` type, the
 `weightType`, and `formatVersion`, the format version the header declares (`"1"` or `"2"`).
+
+    Atlas{T}(io, header::AtlasHeader, atlasParam::T; formatVersion = 1)
+
+The `Atlas` for `io` with the fields of `header`, its types read as [`openAtlas`](@ref) reads them: the map
+`data` type is `Dict{String,Any}`, and `weightType` must be `"Int64"` or `"Float64"`.
 """
 struct Atlas{T}
     io::IO
@@ -86,7 +91,11 @@ struct Atlas{T}
     weightType::DataType
     formatVersion::String
 end
-Atlas{T}(io::IO,atlasHeader::AtlasHeader,atlasParam::T) where T =Atlas(io,atlasHeader.description,atlasHeader.date,atlasParam,atlasHeader.mapParamType,atlasHeader.weightType)
+# From an AtlasHeader, whose types are stored by name: they are turned back into types as openAtlas does it
+# (`_headerTypes`). `formatVersion` is what the atlas declares, as in `newAtlas`: 1 or 2 (or "1" or "2").
+Atlas{T}(io::IO,atlasHeader::AtlasHeader,atlasParam::T; formatVersion=1) where T =
+    Atlas{T}(io,atlasHeader.description,atlasHeader.date,atlasParam,_headerTypes(atlasHeader)...,
+             _formatVersion(formatVersion))
 # Back-compat: before AtlasIO 0.2.1 an Atlas had no formatVersion; such callers mean v1. Both the untyped and the
 # typed (`Atlas{T}(...)`, as CycleWalk 0.2.5 calls it) six-argument forms.
 Atlas(io::IO,description::String,date::String,atlasParam,mapParamType::DataType,weightType::DataType) =
@@ -509,6 +518,14 @@ end
 
 const types=Dict{String,DataType}("Int64"=>Int64,"Float64"=>Float64)
 
+# The map data type and the weight type of an Atlas with header `h`, whose types are stored by name. The map data
+# is always read as Dict{String,Any}: the type's name isn't evaluated, as that would run code from the file.
+function _headerTypes(h::AtlasHeader)
+    haskey(types, h.weightType) ||
+        throw(ArgumentError("unknown weightType \"$(h.weightType)\" (expected \"Int64\" or \"Float64\")"))
+    return Dict{String,Any}, types[h.weightType]
+end
+
 """
     AtlasFormatError(msg) <: Exception
 
@@ -596,8 +613,7 @@ function openAtlas(io::IO)::Atlas
 
     atlasHeader=AtlasHeader(atlasHeaderDict["description"],atlasHeaderDict["date"],atlasHeaderDict["atlasParamType"],atlasHeaderDict["mapParamType"],atlasHeaderDict["weightType"])
     atlas_ParamType=Dict{String,Any}#eval(Meta.parse(atlasHeader.atlasParamType))
-    map_ParamType=Dict{String,Any}#eval(Meta.parse(atlasHeader.mapParamType))
-    weight_type=types[atlasHeader.weightType] #ensure weight type is defined
+    map_ParamType, weight_type = _headerTypes(atlasHeader)
 
     paramLine = _readlineOrFormatError(io, "the atlas-parameters line (line 3)")
     local atlasParam
