@@ -432,7 +432,7 @@ close(out)
 
 Reads and writes format v1 and v2, plain, `.gz` or `.bz2`, and converts files between them. Standard library only (uses
 `orjson` if it is installed). Install with `pip install atlasio` (PyPI, from 0.2.4), or from a release tag:
-`pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.4#subdirectory=python"`.
+`pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.5#subdirectory=python"`.
 
 ```python
 import atlasio
@@ -475,7 +475,7 @@ with atlasio.open_atlas("atlas.jsonl.gz") as atlas:
 ## Python Reader Library (`PythonReader/`)
 
 Read-only. Import by adding `../PythonReader/` to `sys.path`, or with httpimport pinned to a release tag
-(`.../AtlasIO.jl/refs/tags/v0.2.4/PythonReader/`). It is one self-contained file, kept so existing code keeps
+(`.../AtlasIO.jl/refs/tags/v0.2.5/PythonReader/`). It is one self-contained file, kept so existing code keeps
 working; new code can use the `atlasio` package above.
 
 ### `AtlasIO.py`
