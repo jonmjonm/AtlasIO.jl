@@ -7,6 +7,15 @@
   times faster than the `nextMap` loop on 8 threads, as fast as it on one, holding one batch in memory.
   `eachMapData` skips the district assignment: about 6 to 7 times faster. An error is raised at its map, after the
   maps before it. From a path the file is closed at the end or on an error.
+- **`eachMap(f, path)` and `eachMapData(f, path)`** (and on an open `Atlas`): `f` of each map, in file order,
+  with `f` run in the parallel parse tasks, keeping only its results. With real work per map it is 3 to 4 times
+  faster on 8 threads than calling `f` in the loop body, and as fast as AtlasUtilities' batch pattern. Tasks
+  take the next map as they finish one, so uneven work per map doesn't leave them idle.
+- **`ntasks` and `onerror` keywords** for all four forms. `ntasks` (default `Threads.nthreads()`) sets the number
+  of tasks. `onerror = :raise` (the default) raises an error at its map; an error from `f` is raised unchanged
+  after an `@error` log naming the map with the backtrace from inside `f`. `onerror = :skip` leaves out maps
+  that can't be parsed or for which `f` raises, logging the first 10 and the number left out; a failure
+  reading the stream is still raised.
 - **`openAtlas(f, path)`**: the do-block form, closing the atlas afterwards even after a `break` or an error.
 - Docstrings for `openAtlas`, `nextMap`, `parseBufferToMap`, `skipMap`, `copyAtlasHeader` and `AtlasHeader`;
   every exported name now has one.

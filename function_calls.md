@@ -120,14 +120,38 @@ stops early (a `break` or `return`). Returns what `f` returns: `openAtlas("atlas
 
 ### Reading
 
-#### `eachMap(path; skip=0, max=typemax(Int), batch)` / `eachMap(atlas::Atlas; ...)`
+#### `eachMap(path; skip=0, max=typemax(Int), batch, ntasks=Threads.nthreads(), onerror=:raise)` / `eachMap(atlas::Atlas; ...)` / `eachMap(f, path; ...)` / `eachMap(f, atlas::Atlas; ...)`
 An iterator over the maps, in file order: `for m in eachMap("atlas.jsonl.gz") ... end`. It gives the same
 `Map{T,W}`s as a `while !eof(atlas); nextMap(atlas); end` loop, holding one batch in memory at a time.
 
-- With several threads (`julia -t auto`), each batch of `batch` lines (default 256) is read and then parsed in
-  parallel; with one thread the default `batch` is 1.
-- `skip` maps are skipped without parsing (e.g. a burn-in); at most `max` maps are given.
-- An error (malformed line, corrupt file) is raised when the iteration reaches that map, after the maps before it.
+With a function `f`, it gives `f(m)` for each map instead, in file order, and `f` runs in the parallel tasks
+that parse the maps; only `f`'s results are kept. When each map needs real work this is much faster than
+calling `f` in the loop body, which runs serially (see the second table below).
+
+```julia
+areas = eachMap("atlas.jsonl.gz") do m              # f runs in parallel, once per map
+    computeArea(m)
+end
+for a in areas ... end                              # results in map order
+collect(eachMap(computeArea, "atlas.jsonl.gz"))     # all the results, as a Vector
+for (a, b) in eachMap(m -> (f1(m), f2(m)), path) ... end        # several functions: a Tuple per map
+fs = [f1, f2, f3]                                                # a list chosen at run time
+for vals in eachMap(m -> map(g -> g(m), fs), path) ... end      # a Vector{Any} per map
+```
+
+`f` runs on several threads at once, so it must not change shared state. Run dense linear algebra with BLAS on
+one thread (`BLAS.set_num_threads(1)`), or the BLAS threads and the tasks compete for the cores.
+
+- With several threads (`julia -t auto`), each batch of `batch` lines (default 256) is read and then parsed
+  (and given to `f`) by `ntasks` tasks, each taking the next map as it finishes one, so slow maps don't leave
+  the other tasks waiting. With `ntasks = 1` (the default on one thread) the default `batch` is 1.
+- `skip` maps are skipped without parsing (e.g. a burn-in); at most `max` maps are read after them.
+- `onerror = :raise` (the default): an error (a malformed line, or one raised by `f`) is raised when the
+  iteration reaches that map, after the maps before it. An error from `f` is raised unchanged, after an
+  `@error` log naming the map and showing the backtrace from inside `f`.
+- `onerror = :skip`: a map whose line can't be parsed, or for which `f` raises, is left out. The first 10 are
+  logged with `@error`, and a `@warn` at the end gives the number left out. A failure reading the stream (a
+  corrupt or truncated compressed file) is always raised.
 - From a `path`, the file is closed when the last map has been read, or on an error; after a `break` it stays
   open until garbage collection, so use `openAtlas(f, path)` with `eachMap(atlas)` to close it at once. From an
   `atlas`, it reads from the current position and never closes it; don't mix it with `nextMap` on the same
@@ -152,9 +176,20 @@ An iterator over the maps, in file order: `for m in eachMap("atlas.jsonl.gz") ..
   serial, so more threads don't help it.
 - On one thread `eachMap` takes about the same time as the loop.
 
-#### `eachMapData(path; skip=0, max=typemax(Int), batch)` / `eachMapData(atlas::Atlas; ...)`
+With work on each map, measured with [benchmark/bench_eachmap_f.jl](benchmark/bench_eachmap_f.jl) on 8
+threads (µs per map; "heavy" is a synthetic 1–4 ms of CPU per map), against the pattern AtlasUtilities uses
+(read a batch serially, then parse and compute in parallel):
+
+| Atlas | Work | AtlasUtilities pattern | `eachMap`, `f` in the loop | `eachMap(f)` |
+|---|---|---|---|---|
+| CycleWalk NC precincts, 66 KB per line | light | 1114 | 1378 | 1067 |
+| CycleWalk NC precincts | heavy | 1597 | 5358 | 1610 |
+| NC multiscale, 28 KB per line | light | 385 | 450 | 371 |
+| NC multiscale | heavy | 690 | 2642 | 680 |
+
+#### `eachMapData(path; ...)` / `eachMapData(atlas::Atlas; ...)` / `eachMapData(f, path; ...)` / `eachMapData(f, atlas::Atlas; ...)`
 `eachMap` for `MapData` (each map's `name`, `weight` and `data`, without the district assignment): about 6
-to 7 times faster.
+to 7 times faster. With `f`, it gives `f(d)` for each `MapData` `d`, with the same keywords as `eachMap`.
 
 #### `openAtlas(io::IO)::Atlas`
 Reads the 3-line header from `io` and returns an `Atlas`. The comment line is
