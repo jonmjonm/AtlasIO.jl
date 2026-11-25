@@ -17,6 +17,9 @@ end
 for d in eachMapData("atlas.jsonl.gz"; skip = 1000)    # name, weight and data only (much faster), after a burn-in
     # ...
 end
+areas = eachMap("atlas.jsonl.gz") do m                 # f(m) for each map, with f run in parallel
+    computeArea(m)
+end
 ```
 
 `eachMap` reads the file in batches parsed in parallel when Julia has several threads (`julia -t auto`): about
@@ -35,7 +38,13 @@ Time per map (µs; [benchmark/bench_eachmap.jl](benchmark/bench_eachmap.jl), Jul
 | NC multiscale | 1 | 894 | 946 | 152 (5.9×) |
 
 The time per map grows with the size of the map; on one thread `eachMap` is about as fast as the `nextMap`
-loop. More detail is under `eachMap` in [function_calls.md](function_calls.md).
+loop.
+
+When each map needs real work, give the function to `eachMap` (`eachMap(f, path)`, or the do-block above)
+rather than calling it in the loop body: `f` then runs in the parallel tasks, and only its results are kept.
+With 1–4 ms of work per map this was 3–4 times faster on 8 threads than calling `f` in the loop. `ntasks` sets
+the number of tasks, and `onerror = :skip` leaves out maps that can't be read or for which `f` raises (logging
+the first 10). More detail is under `eachMap` in [function_calls.md](function_calls.md).
 
 ## Reading Atlas files in Python
 

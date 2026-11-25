@@ -843,20 +843,57 @@ end
 # ---------------------------------------------------------------------------
 
 """
-    eachMap(path; skip = 0, max = typemax(Int), batch)
-    eachMap(atlas::Atlas; skip = 0, max = typemax(Int), batch)
+    eachMap(path; skip = 0, max = typemax(Int), batch, ntasks = Threads.nthreads(), onerror = :raise)
+    eachMap(atlas::Atlas; ...)
+    eachMap(f, path; ...)
+    eachMap(f, atlas::Atlas; ...)
 
 An iterator over the maps of an atlas, in file order: `for m in eachMap("atlas.jsonl.gz") ... end`. It gives
 the same `Map`s as a `while !eof(atlas); nextMap(atlas); end` loop, without holding more than one batch in
 memory.
 
-- With several threads (`julia -t auto`), each batch of `batch` lines (default 256) is read and then parsed in
-  parallel: about 2.5 times faster on 8 threads than the `nextMap` loop (JSON parsing is most of the work;
-  reading the compressed stream is serial and sets the limit). With one thread the default `batch` is 1, as
-  fast as the loop: holding a batch of parsed maps only costs garbage collection time there.
-- `skip` maps are skipped without parsing first (e.g. a burn-in), and at most `max` maps are given.
-- An error (a malformed line, a corrupt file) is raised when the iteration reaches that map, after the maps
-  before it, as with `nextMap`.
+With a function `f`, it gives `f(m)` for each map `m` instead, in file order, and `f` runs in the parallel
+tasks that parse the maps. Only `f`'s results are kept, not the parsed maps, so when each map needs real work
+this is much faster than calling `f` in the loop body, which runs serially:
+
+```julia
+areas = eachMap("atlas.jsonl.gz") do m        # f runs in parallel, once per map
+    computeArea(m)
+end
+for a in areas                                # results in map order, one at a time
+    println(out, a)
+end
+collect(eachMap(computeArea, "atlas.jsonl.gz"))          # all the results, as a Vector
+
+# several functions on each map, each map parsed once:
+for (a, b) in eachMap(m -> (f1(m), f2(m)), path)         # a fixed set: a Tuple per map
+    ...
+end
+fs = [f1, f2, f3]                                         # a list chosen at run time
+for vals in eachMap(m -> map(g -> g(m), fs), path)        # a Vector{Any} per map
+    ...
+end
+```
+
+`f` runs on several threads at once, so it must not change shared state (write only to its own result). A
+function that does dense linear algebra should run with BLAS on one thread (`BLAS.set_num_threads(1)`), or
+the BLAS threads and the tasks compete for the cores.
+
+- With several threads (`julia -t auto`), each batch of `batch` lines (default 256) is read and then parsed
+  (and given to `f`) by `ntasks` tasks, each taking the next map as it finishes one, so maps that take longer
+  than others don't leave the other tasks waiting. Without `f`, this is about 2.5 times faster on 8 threads
+  than the `nextMap` loop (JSON parsing is most of the work; reading the compressed stream is serial and sets
+  the limit). With `ntasks = 1` (the default on one thread) the default `batch` is 1, as fast as the loop:
+  holding a batch of parsed maps only costs garbage collection time there.
+- `skip` maps are skipped without parsing first (e.g. a burn-in), and at most `max` maps are read after them.
+- Errors, with `onerror = :raise` (the default): an error parsing a map line (an `AtlasFormatError`) or
+  raised by `f` is raised when the iteration reaches that map, after the maps before it, as with `nextMap`.
+  An error from `f` is raised unchanged, after an `@error` log naming the map and showing the backtrace from
+  inside `f`, which the raised error no longer carries because it was caught in another task.
+- With `onerror = :skip`, a map whose line can't be parsed, or for which `f` raises, is left out: the
+  first 10 are logged with `@error` (with the backtrace from inside `f`), and when the iteration ends a
+  `@warn` gives the number left out. A failure reading the stream itself (a corrupt or truncated compressed
+  file) is always raised, as nothing after it can be read.
 - Given a `path` (anything [`smartOpen`](@ref) opens), the file is closed when the last map has been read, or
   on an error. If the loop stops early (a `break`), it stays open until garbage collection; to close it right
   away, use the do-block form of [`openAtlas`](@ref) with `eachMap(atlas)`. Given an `atlas`, it reads from
@@ -865,20 +902,28 @@ memory.
 
 For the maps' `name`, `weight` and `data` only, [`eachMapData`](@ref) is about 6 to 7 times faster.
 """
-eachMap(path::AbstractString; kw...) = eachMap(openAtlas(_openForReading(path)); _owns = true, kw...)
-eachMap(atlas::Atlas; kw...) =
-    _mapIterator(atlas, Map{atlas.mapParamType,atlas.weightType}, parseBufferToMap; kw...)
+eachMap(path::AbstractString; kw...) = eachMap(identity, path; kw...)
+eachMap(atlas::Atlas; kw...) = eachMap(identity, atlas; kw...)
+eachMap(f, path::AbstractString; kw...) = eachMap(f, openAtlas(_openForReading(path)); _owns = true, kw...)
+eachMap(f, atlas::Atlas; kw...) =
+    _mapIterator(f, atlas, Map{atlas.mapParamType,atlas.weightType}, _parseMapLine; kw...)
 
 """
-    eachMapData(path; skip = 0, max = typemax(Int), batch)
-    eachMapData(atlas::Atlas; skip = 0, max = typemax(Int), batch)
+    eachMapData(path; skip = 0, max = typemax(Int), batch, ntasks = Threads.nthreads(), onerror = :raise)
+    eachMapData(atlas::Atlas; ...)
+    eachMapData(f, path; ...)
+    eachMapData(f, atlas::Atlas; ...)
 
 [`eachMap`](@ref) for [`MapData`](@ref): each map's `name`, `weight` and `data`, without its district
-assignment, which is most of the work of parsing a map: about 6 to 7 times faster.
+assignment, which is most of the work of parsing a map: about 6 to 7 times faster. With `f`, it gives `f(d)`
+for each `MapData` `d`, with `f` run in the parallel tasks, as for `eachMap`.
 """
-eachMapData(path::AbstractString; kw...) = eachMapData(openAtlas(_openForReading(path)); _owns = true, kw...)
-eachMapData(atlas::Atlas; kw...) =
-    _mapIterator(atlas, MapData{atlas.mapParamType,atlas.weightType}, parseBufferToMapData; kw...)
+eachMapData(path::AbstractString; kw...) = eachMapData(identity, path; kw...)
+eachMapData(atlas::Atlas; kw...) = eachMapData(identity, atlas; kw...)
+eachMapData(f, path::AbstractString; kw...) =
+    eachMapData(f, openAtlas(_openForReading(path)); _owns = true, kw...)
+eachMapData(f, atlas::Atlas; kw...) =
+    _mapIterator(f, atlas, MapData{atlas.mapParamType,atlas.weightType}, parseBufferToMapData; kw...)
 
 """
     openAtlas(f, path)
@@ -909,54 +954,115 @@ function _openForReading(path::AbstractString)
     return io
 end
 
-# The state of an `eachMap`/`eachMapData` iteration: the current batch of parsed maps (and any error per map).
-mutable struct MapIterator{E,F}
+# Why a map of a batch gave no result: the error, its backtrace (from inside `f`, or `nothing` for a parse or
+# read error), the map's name (`nothing` if its line could not be parsed), and its number in the file.
+struct _MapFailure
+    exception::Any
+    backtrace::Any
+    name::Union{Nothing,String}
+    index::Int
+    fromF::Bool                    # raised by `f` (not a parse error)
+    stream::Bool                   # a failure reading the stream: always raised
+end
+
+# The state of an `eachMap`/`eachMapData` iteration: the current batch of results (and any failure per map).
+mutable struct MapIterator{E,M,F,P}
     atlas::Atlas
-    parse::F                       # (atlas, line) -> E
+    f::F                           # applied to each parsed map (`identity` for the maps themselves)
+    parse::P                       # (atlas, line) -> M
     owns::Bool                     # opened from a path: close the atlas when done
-    remaining::Int                 # maps still to give (`max`)
+    remaining::Int                 # maps still to read (`max`)
     batch::Int
-    maps::Vector{E}
-    errors::Vector{Any}            # `nothing`, or the error to raise at that map
-    next::Int                      # the next index into `maps`
+    ntasks::Int
+    skipErrors::Bool               # onerror = :skip
+    read::Int                      # maps read from the file so far (including `skip`)
+    skipped::Int                   # maps left out by onerror = :skip
+    results::Vector{E}
+    failures::Vector{Union{Nothing,_MapFailure}}
+    next::Int                      # the next index into `results`
     done::Bool
 end
 
-function _mapIterator(atlas::Atlas, ::Type{E}, parse::F; skip::Integer = 0, max::Integer = typemax(Int),
-                      batch::Integer = Threads.nthreads() > 1 ? 256 : 1, _owns::Bool = false) where {E,F}
+const _MAX_SKIP_LOGS = 10
+
+function _mapIterator(f::F, atlas::Atlas, ::Type{M}, parse::P; skip::Integer = 0, max::Integer = typemax(Int),
+                      ntasks::Integer = Threads.nthreads(), batch::Integer = ntasks > 1 ? 256 : 1,
+                      onerror::Symbol = :raise, _owns::Bool = false) where {F,M,P}
+    nskipped = 0
     try
         skip >= 0 || throw(ArgumentError("skip must be ≥ 0"))
         max >= 0 || throw(ArgumentError("max must be ≥ 0"))
         batch >= 1 || throw(ArgumentError("batch must be ≥ 1"))
+        ntasks >= 1 || throw(ArgumentError("ntasks must be ≥ 1"))
+        onerror in (:raise, :skip) || throw(ArgumentError("onerror must be :raise or :skip, not :$onerror"))
         for _ in 1:skip
             eof(atlas) && break
             _readMapLine(atlas)
+            nskipped += 1
         end
     catch
         _owns && close(atlas)
         rethrow()
     end
-    return MapIterator{E,F}(atlas, parse, _owns, Int(max), Int(batch),
-                            E[], Any[], 1, false)
+    E = f === identity ? M : Base.promote_op(f, M)
+    E = isconcretetype(E) ? E : Any
+    return MapIterator{E,M,F,P}(atlas, f, parse, _owns, Int(max), Int(batch), Int(ntasks), onerror === :skip,
+                                nskipped, 0, E[], Union{Nothing,_MapFailure}[], 1, false)
 end
 
 Base.IteratorSize(::Type{<:MapIterator}) = Base.SizeUnknown()
 Base.eltype(::Type{<:MapIterator{E}}) where {E} = E
 
 function Base.iterate(it::MapIterator, _ = nothing)
-    it.next > length(it.maps) && !_readBatch!(it) && return nothing
-    i = it.next
-    it.next += 1
-    e = it.errors[i]
-    if e !== nothing
+    while true
+        it.next > length(it.results) && !_readBatch!(it) && return nothing
+        i = it.next
+        it.next += 1
+        fail = it.failures[i]
+        fail === nothing && return it.results[i], nothing
+        if it.skipErrors && !fail.stream
+            it.skipped += 1
+            it.skipped <= _MAX_SKIP_LOGS && _logFailure(fail, true)
+            continue
+        end
+        fail.fromF && _logFailure(fail, false)
         _finish!(it)
-        throw(e)
+        throw(fail.exception)
     end
-    return it.maps[i], nothing
 end
 
-# Read and parse the next batch (in parallel when it has several maps). False when there are no more maps.
-function _readBatch!(it::MapIterator{E}) where {E}
+function _logFailure(fail::_MapFailure, skipped::Bool)
+    who = fail.name === nothing ? "map $(fail.index)" : "map $(fail.index) (\"$(fail.name)\")"
+    why = fail.fromF ? "the function given to eachMap/eachMapData raised an error" : "its line could not be parsed"
+    msg = skipped ? "$who was left out (onerror = :skip): $why" : "$who: $why"
+    if fail.backtrace === nothing
+        @error msg exception = fail.exception
+    else
+        @error msg exception = (fail.exception, fail.backtrace)
+    end
+end
+
+# Run `g(i)` for `i in 1:n` on `ntasks` tasks, each taking the next `i` as it finishes one. `g` must not throw.
+function _parallelFor(g::G, n::Int, ntasks::Int) where {G}
+    if ntasks <= 1 || n <= 1
+        for i in 1:n
+            g(i)
+        end
+        return
+    end
+    counter = Threads.Atomic{Int}(1)
+    @sync for _ in 1:min(ntasks, n)
+        Threads.@spawn while true
+            i = Threads.atomic_add!(counter, 1)
+            i > n && break
+            g(i)
+        end
+    end
+    return
+end
+
+# Read and process the next batch. False when there are no more maps.
+function _readBatch!(it::MapIterator{E,M}) where {E,M}
     it.done && return false
     lines = String[]
     readError = nothing
@@ -973,33 +1079,41 @@ function _readBatch!(it::MapIterator{E}) where {E}
         _finish!(it)
         return false
     end
+    first = it.read
+    it.read += n
     it.remaining -= n
-    maps = Vector{E}(undef, n)
-    errors = Vector{Any}(nothing, n)
-    parseOne(i) = try
-        maps[i] = it.parse(it.atlas, lines[i])
-    catch e
-        errors[i] = e
-    end
-    if n > 1
-        Threads.@threads for i in 1:n
-            parseOne(i)
+    results = Vector{E}(undef, n)
+    failures = Vector{Union{Nothing,_MapFailure}}(nothing, n)
+    atlas, f, parse = it.atlas, it.f, it.parse
+    _parallelFor(n, it.ntasks) do i
+        m = try
+            parse(atlas, lines[i])::M
+        catch e
+            failures[i] = _MapFailure(e, nothing, nothing, first + i, false, false)
+            return
         end
-    elseif n == 1
-        parseOne(1)
+        try
+            results[i] = f(m)
+        catch e
+            failures[i] = _MapFailure(e, catch_backtrace(), m.name, first + i, true, false)
+        end
     end
     if readError !== nothing
-        resize!(maps, n + 1)
-        push!(errors, readError)
+        resize!(results, n + 1)
+        push!(failures, _MapFailure(readError, nothing, nothing, first + n + 1, false, true))
     end
-    it.maps, it.errors, it.next = maps, errors, 1
+    it.results, it.failures, it.next = results, failures, 1
     return true
 end
 
 function _finish!(it::MapIterator{E}) where {E}
+    it.done && return it
     it.done = true
-    it.maps, it.errors = E[], Any[]
+    it.results, it.failures = E[], Union{Nothing,_MapFailure}[]
     it.owns && close(it.atlas)
+    it.skipped > 0 && @warn "eachMap/eachMapData left out $(it.skipped) map$(it.skipped == 1 ? "" : "s") " *
+                            "that could not be read or for which the function raised an error (onerror = :skip)" *
+                            (it.skipped > _MAX_SKIP_LOGS ? "; only the first $_MAX_SKIP_LOGS were logged." : ".")
     return it
 end
 
