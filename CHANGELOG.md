@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## [0.2.5]
+
+Julia: **`eachMap` and `eachMapData`**, iterators over an atlas's maps, parsed in parallel, with a form that runs
+a function on each map in the parallel tasks. No code changes in the Python package.
+
+### Added
 
 - **`eachMap(path)` and `eachMapData(path)`**: iterators over an atlas's maps (or an open `Atlas`), in file
   order, with `skip` (a burn-in) and `max`. With several threads each batch is parsed in parallel: about 2.5
@@ -19,6 +24,13 @@
 - **`openAtlas(f, path)`**: the do-block form, closing the atlas afterwards even after a `break` or an error.
 - Docstrings for `openAtlas`, `nextMap`, `parseBufferToMap`, `skipMap`, `copyAtlasHeader` and `AtlasHeader`;
   every exported name now has one.
+- `benchmark/bench_eachmap.jl` and `benchmark/bench_eachmap_f.jl`; the measured times are in `function_calls.md`.
+
+### Changed
+
+- The examples in `PythonExamples/` use the `atlasio` package, with a new writing example; the examples for
+  `PythonReader/AtlasIO.py` are kept at the `v0.2.4` tag.
+- Docs: the git and httpimport pins move to `v0.2.5`.
 
 ## [0.2.4]
 

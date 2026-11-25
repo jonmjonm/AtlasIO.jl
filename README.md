@@ -56,7 +56,7 @@ From AtlasIO 0.2.1 there are two Python readers. Both read format v1 and v2 file
   pip install atlasio
   ```
 
-  or straight from a release tag of this repository: `pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.4#subdirectory=python"`.
+  or straight from a release tag of this repository: `pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.5#subdirectory=python"`.
 
   ```python
   import atlasio
@@ -68,7 +68,7 @@ From AtlasIO 0.2.1 there are two Python readers. Both read format v1 and v2 file
 * **[PythonReader/AtlasIO.py](PythonReader/AtlasIO.py)** (the original single file, kept so existing code works unchanged). District keys are strings such as `'["MECKLENBURG", "052"]'`. Load it by adding `PythonReader/` to `sys.path`, or with [httpimport](https://pypi.org/project/httpimport/) pinned to a release tag, so that later changes on `main` cannot change your results:
 
   ```python
-  with httpimport.remote_repo(['AtlasIO'], 'https://raw.githubusercontent.com/jonmjonm/AtlasIO.jl/refs/tags/v0.2.4/PythonReader/'):
+  with httpimport.remote_repo(['AtlasIO'], 'https://raw.githubusercontent.com/jonmjonm/AtlasIO.jl/refs/tags/v0.2.5/PythonReader/'):
       import AtlasIO
   ```
 
