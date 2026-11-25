@@ -157,3 +157,21 @@ end
         @test pk("[\"x, y\", \"[br]\"]") == ("x, y", "[br]")
     end
 end
+
+# The Atlas constructors that callers written before AtlasIO 0.2.1 use (no formatVersion; before float weights, no
+# weightType either). CycleWalk 0.2.5 calls the typed six-argument form; MetropolizedForestRecom the typed five.
+@testset "Atlas constructors kept for older callers" begin
+    P = Dict{String,Any}
+    param = P("a" => 1)
+    io = IOBuffer()
+    for (a, weightType) in (
+            (Atlas{P}(io, "d", "t", param, P, Float64), Float64),       # typed, six arguments
+            (Atlas(io, "d", "t", param, P, Float64), Float64),          # untyped, six
+            (Atlas{P}(io, "d", "t", param, P), Int64))                  # typed, five: weights default to Int64
+        @test a isa Atlas{P}
+        @test a.io === io && a.description == "d" && a.date == "t" && a.atlasParam === param
+        @test a.mapParamType === P && a.weightType === weightType
+        @test a.formatVersion == "1"
+    end
+    @test Atlas{P}(io, "d", "t", param, P, Float64, "2").formatVersion == "2"
+end

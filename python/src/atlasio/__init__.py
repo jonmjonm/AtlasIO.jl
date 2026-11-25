@@ -25,7 +25,7 @@ import json
 import os
 import re
 
-__version__ = "0.2.5"
+__version__ = "0.2.6"
 
 __all__ = ["open_atlas", "Atlas", "Map", "AtlasFormatError", "parse_map", "parse_district_key",
            "district_key_string", "new_atlas", "AtlasWriter", "map_json", "convert", "FORMAT_VERSIONS",

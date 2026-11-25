@@ -12,7 +12,7 @@ and converts files between the two versions, compatible with [AtlasIO.jl](https:
 
 or, from a release tag of the AtlasIO.jl repository (needs git):
 
-    pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.5#subdirectory=python"
+    pip install "atlasio @ git+https://github.com/jonmjonm/AtlasIO.jl@v0.2.6#subdirectory=python"
 
 The package's version always equals AtlasIO.jl's: both are released together from one tag.
 

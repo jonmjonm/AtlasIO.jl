@@ -87,9 +87,12 @@ struct Atlas{T}
     formatVersion::String
 end
 Atlas{T}(io::IO,atlasHeader::AtlasHeader,atlasParam::T) where T =Atlas(io,atlasHeader.description,atlasHeader.date,atlasParam,atlasHeader.mapParamType,atlasHeader.weightType)
-# Back-compat: before AtlasIO 0.2.1 an Atlas had no formatVersion; such callers mean v1
+# Back-compat: before AtlasIO 0.2.1 an Atlas had no formatVersion; such callers mean v1. Both the untyped and the
+# typed (`Atlas{T}(...)`, as CycleWalk 0.2.5 calls it) six-argument forms.
 Atlas(io::IO,description::String,date::String,atlasParam,mapParamType::DataType,weightType::DataType) =
     Atlas(io,description,date,atlasParam,mapParamType,weightType,"1")
+Atlas{T}(io::IO,description::String,date::String,atlasParam::T,mapParamType::DataType,weightType::DataType) where T =
+    Atlas{T}(io,description,date,atlasParam,mapParamType,weightType,"1")
 # Back-compat: pre-float_weights callers passed 5 positional args (no weightType); default it to Int64
 Atlas{T}(io::IO,description::String,date::String,atlasParam::T,mapParamType::DataType) where T =Atlas(io,description,date,atlasParam,mapParamType,Int64)
 
