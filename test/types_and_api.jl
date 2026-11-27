@@ -157,3 +157,55 @@ end
         @test pk("[\"x, y\", \"[br]\"]") == ("x, y", "[br]")
     end
 end
+
+# The Atlas constructors that callers written before AtlasIO 0.2.1 use (no formatVersion; before float weights, no
+# weightType either). CycleWalk 0.2.5 calls the typed six-argument form; MetropolizedForestRecom the typed five.
+@testset "Atlas constructors kept for older callers" begin
+    P = Dict{String,Any}
+    param = P("a" => 1)
+    io = IOBuffer()
+    for (a, weightType) in (
+            (Atlas{P}(io, "d", "t", param, P, Float64), Float64),       # typed, six arguments
+            (Atlas(io, "d", "t", param, P, Float64), Float64),          # untyped, six
+            (Atlas{P}(io, "d", "t", param, P), Int64))                  # typed, five: weights default to Int64
+        @test a isa Atlas{P}
+        @test a.io === io && a.description == "d" && a.date == "t" && a.atlasParam === param
+        @test a.mapParamType === P && a.weightType === weightType
+        @test a.formatVersion == "1"
+    end
+    @test Atlas{P}(io, "d", "t", param, P, Float64, "2").formatVersion == "2"
+end
+
+# From an AtlasHeader (it stores its types by name): broken before 0.2.6, as the names were passed on as the types.
+@testset "Atlas from an AtlasHeader" begin
+    P = Dict{String,Any}
+    param = P("a" => 1)
+    io = IOBuffer()
+    for weightType in (Int64, Float64)
+        h = AtlasHeader("d", "t", P, P; weightType = weightType)
+        a = Atlas{P}(io, h, param)
+        @test a isa Atlas{P}
+        @test a.io === io && a.description == "d" && a.date == "t" && a.atlasParam === param
+        @test a.mapParamType === P && a.weightType === weightType
+        @test a.formatVersion == "1"
+    end
+    h = AtlasHeader("d", "t", P, P)
+    @test Atlas{P}(io, h, param; formatVersion = 2).formatVersion == "2"
+    @test Atlas{P}(io, h, param; formatVersion = "2").formatVersion == "2"
+    @test_throws ArgumentError Atlas{P}(io, h, param; formatVersion = 3)
+    bad = AtlasHeader("d", "t", "Dict{String, Any}", "Dict{String, Any}"; weightType = "Float32")
+    err = try Atlas{P}(io, bad, param); nothing catch e; e end
+    @test err isa ArgumentError && occursin("unknown weightType \"Float32\"", err.msg)
+
+    # the same fields as openAtlas gives for the atlas written with that header
+    for (weightType, version) in ((Int64, 1), (Float64, 1), (Float64, 2))
+        h = AtlasHeader("round trip", "2026-11-25", P, P; weightType = weightType)
+        buf = IOBuffer()
+        newAtlas(buf, h, param; formatVersion = version)
+        read = openAtlas(IOBuffer(take!(buf)))
+        made = Atlas{P}(IOBuffer(), h, param; formatVersion = version)
+        for f in (:description, :date, :atlasParam, :mapParamType, :weightType, :formatVersion)
+            @test getfield(made, f) == getfield(read, f)
+        end
+    end
+end
